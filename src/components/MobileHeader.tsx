@@ -6,6 +6,7 @@ import { LogOut, Settings, X, Info, Shield, ChevronRight } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
+import Image from 'next/image'
 
 function AboutSheet({ onClose }: { onClose: () => void }) {
   return (
@@ -71,7 +72,7 @@ function AboutSheet({ onClose }: { onClose: () => void }) {
   )
 }
 
-export function MobileHeader({ userName, userEmail }: { userName?: string; userEmail?: string }) {
+export function MobileHeader({ userName, userEmail, avatarUrl }: { userName?: string; userEmail?: string; avatarUrl?: string | null }) {
   const [open, setOpen]       = useState(false)
   const [showAbout, setShowAbout] = useState(false)
   const router   = useRouter()
@@ -115,7 +116,7 @@ export function MobileHeader({ userName, userEmail }: { userName?: string; userE
         <span style={{ fontWeight: 700, fontSize: '17px', letterSpacing: '-0.4px', color: 'var(--text-primary)' }}>
           Mayaz OS
         </span>
-
+        {/* Avatar button */}
         <button
           onClick={() => setOpen(true)}
           style={{
@@ -125,9 +126,15 @@ export function MobileHeader({ userName, userEmail }: { userName?: string; userE
             border: '2px solid var(--em-200)',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             cursor: 'pointer',
+            overflow: 'hidden',
+            padding: 0,
           }}
         >
-          <span style={{ fontSize: '12px', fontWeight: 800, color: 'var(--em-700)' }}>{initials}</span>
+          {avatarUrl ? (
+            <Image src={avatarUrl} alt="Avatar" width={36} height={36} style={{ width: '100%', height: '100%', objectFit: 'cover' }} unoptimized />
+          ) : (
+            <span style={{ fontSize: '12px', fontWeight: 800, color: 'var(--em-700)' }}>{initials}</span>
+          )}
         </button>
       </header>
 
@@ -174,8 +181,12 @@ export function MobileHeader({ userName, userEmail }: { userName?: string; userE
                   <motion.div key="menu" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
                     {/* Profile Info */}
                     <div style={{ padding: '20px 20px 16px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: '14px' }}>
-                      <div style={{ width: '48px', height: '48px', borderRadius: '50%', background: 'var(--em-100)', border: '2px solid var(--em-200)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                        <span style={{ fontSize: '16px', fontWeight: 800, color: 'var(--em-700)' }}>{initials}</span>
+                      <div style={{ width: '48px', height: '48px', borderRadius: '50%', background: 'var(--em-100)', border: '2px solid var(--em-200)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, overflow: 'hidden' }}>
+                        {avatarUrl ? (
+                          <Image src={avatarUrl} alt="Avatar" width={48} height={48} style={{ width: '100%', height: '100%', objectFit: 'cover' }} unoptimized />
+                        ) : (
+                          <span style={{ fontSize: '16px', fontWeight: 800, color: 'var(--em-700)' }}>{initials}</span>
+                        )}
                       </div>
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <p style={{ fontSize: '15px', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '2px' }}>{userName || displayName}</p>

@@ -19,6 +19,13 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
       : parts[0]
   }
 
+  // Fetch avatar from profiles table
+  const { data: profile } = user
+    ? await supabase.from('profiles').select('avatar_url').eq('id', user.id).single()
+    : { data: null }
+  const avatarUrl = profile?.avatar_url ||
+    (user?.user_metadata?.avatar_url as string | undefined) || null
+
   return (
     <div style={{ display: 'flex', minHeight: '100vh', backgroundColor: 'var(--bg-base)' }}>
       {/* Desktop Sidebar — hidden on mobile via CSS */}
@@ -32,12 +39,11 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
           flexDirection: 'column',
           minHeight: '100vh',
           overflowX: 'hidden',
-          // On desktop push right of sidebar — done via media query in globals
         }}
         className="ml-0 md:ml-[240px]"
       >
         {/* Mobile sticky header */}
-        <MobileHeader userName={displayName} userEmail={userEmail} />
+        <MobileHeader userName={displayName} userEmail={userEmail} avatarUrl={avatarUrl} />
 
         {/* Page content */}
         <div style={{ flex: 1 }}>

@@ -2,6 +2,7 @@ import { AppShell } from '@/components/AppShell'
 import { createClient } from '@/lib/supabase/server'
 import { Shield, Cpu, User, Info, Lock } from 'lucide-react'
 import { ClearBriefingCacheButton } from './ClearBriefingCacheButton'
+import { AvatarUpload } from './AvatarUpload'
 import type { Metadata } from 'next'
 
 export const metadata: Metadata = {
@@ -40,6 +41,15 @@ export default async function SettingsPage() {
     firstName = nameParts[nameParts.length - 1]
   }
 
+  // Fetch avatar from profiles table
+  const { data: profile } = user
+    ? await supabase.from('profiles').select('avatar_url').eq('id', user.id).single()
+    : { data: null }
+  const avatarUrl = profile?.avatar_url ||
+    (user?.user_metadata?.avatar_url as string | undefined) || null
+
+  const initials = rawName.trim().slice(0, 2).toUpperCase()
+
   const groqConfigured  = !!(process.env.GROQ_API_KEY && process.env.GROQ_API_KEY !== 'your-groq-api-key-here')
   const supabaseConfigured = !!(process.env.NEXT_PUBLIC_SUPABASE_URL?.startsWith('http'))
 
@@ -61,6 +71,14 @@ export default async function SettingsPage() {
 
           {/* Account */}
           <Section title="Account" icon={<User size={13} color="var(--text-muted)" />}>
+            {/* Avatar upload at top of account section */}
+            {user && (
+              <AvatarUpload
+                userId={user.id}
+                currentAvatarUrl={avatarUrl}
+                initials={initials}
+              />
+            )}
             <Row label="Name" value={rawName} />
             <Row label="Email" value={user?.email || '—'} />
             <Row label="User ID" value={user?.id ? `${user.id.slice(0, 8)}…` : '—'} last />
