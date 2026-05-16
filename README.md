@@ -1,6 +1,6 @@
 <div align="center">
 
-# ✦ Mayaz OS ✦
+#  Mayaz OS 
 
 **A premium, AI-powered personal operating system**
 
