@@ -136,3 +136,22 @@ export async function logWorkoutDone(planId: string): Promise<{ error?: string }
   revalidatePath('/home')
   return {}
 }
+
+// ── Clear a day's plan ────────────────────────────────────────────────────────
+export async function clearDayPlan(day_of_week: string): Promise<{ error?: string }> {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { error: 'Not authenticated.' }
+
+  const { error } = await supabase
+    .from('workout_plans')
+    .delete()
+    .eq('user_id', user.id)
+    .eq('day_of_week', day_of_week)
+
+  if (error) return { error: error.message }
+
+  revalidatePath('/fitness')
+  revalidatePath('/home')
+  return {}
+}

@@ -1,9 +1,12 @@
 'use client'
 
-import { motion } from 'framer-motion'
+import { motion, AnimatePresence } from 'framer-motion'
 import ReactMarkdown from 'react-markdown'
 import Link from 'next/link'
-import { Dumbbell, GraduationCap, Clock, ArrowRight, Sparkles, Tag, ChevronRight } from 'lucide-react'
+import {
+  Dumbbell, GraduationCap, Sparkles, ChevronRight,
+  X, Clock, AlertTriangle, BookOpen, Monitor, Swords, FileText, FolderKanban, MoreHorizontal,
+} from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { HomeChatPanel } from '@/components/HomeChatPanel'
 
@@ -15,6 +18,15 @@ type DayPlan = {
 
 type Task = {
   id: string; title: string; type: string; due_date: string; status: string
+}
+
+const TASK_TYPE_CONFIG: Record<string, { icon: React.ElementType; label: string }> = {
+  assignment:   { icon: BookOpen,       label: 'Assignment' },
+  presentation: { icon: Monitor,        label: 'Presentation' },
+  hackathon:    { icon: Swords,         label: 'Hackathon' },
+  exam:         { icon: FileText,       label: 'Exam' },
+  project:      { icon: FolderKanban,   label: 'Project' },
+  other:        { icon: MoreHorizontal, label: 'Other' },
 }
 
 function useClock() {
@@ -33,12 +45,16 @@ function useClock() {
 
 function formatRelativeDate(due_date: string) {
   const diffMs   = new Date(due_date).getTime() - Date.now()
-  const diffDays = Math.ceil(diffMs / (1000 * 60 * 60 * 24))
-  if (diffDays <= 0) return 'Due today'
-  if (diffDays === 1) return 'Due tomorrow'
+  if (diffMs <= 0) return 'Due today'
+  const diffHours = Math.floor(diffMs / (1000 * 60 * 60))
+  const diffDays  = Math.floor(diffMs / (1000 * 60 * 60 * 24))
+  if (diffDays === 0) return `In ${diffHours}h`
+  if (diffDays === 1) {
+    const remHours = diffHours - 24
+    return remHours > 0 ? `In 1d ${remHours}h` : 'Tomorrow'
+  }
   return `In ${diffDays}d`
 }
-
 
 const stagger = {
   hidden: { opacity: 0 },
@@ -63,6 +79,8 @@ export function HomeClient({
   contextSnapshot: string
 }) {
   const { date } = useClock()
+  const [selectedWorkout, setSelectedWorkout] = useState<DayPlan | null>(null)
+  const [selectedTask, setSelectedTask] = useState<Task | null>(null)
 
   return (
     <motion.div
@@ -72,10 +90,7 @@ export function HomeClient({
       style={{ minHeight: '100vh', backgroundColor: '#f0f0f0' }}
     >
       {/* ─── Hero Greeting ─────────────────────────────────── */}
-      <motion.div
-        variants={fadeUp}
-        style={{ padding: '24px 20px 12px', backgroundColor: '#f0f0f0' }}
-      >
+      <motion.div variants={fadeUp} style={{ padding: '24px 20px 12px', backgroundColor: '#f0f0f0' }}>
         <p style={{ fontSize: '13px', fontWeight: 500, color: 'var(--text-muted)', marginBottom: '6px' }}>{date}</p>
         <h1 style={{ fontSize: '28px', fontWeight: 800, letterSpacing: '-0.5px', lineHeight: 1.2, color: 'var(--text-primary)' }}>
           Welcome back,{' '}
@@ -84,7 +99,7 @@ export function HomeClient({
       </motion.div>
 
       {/* ─── Content ───────────────────────────────────────── */}
-      <div style={{ flex: 1, padding: '0 16px 120px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+      <div style={{ flex: 1, padding: '0 16px 180px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
 
         {/* AI Briefing Card */}
         <motion.div variants={fadeUp}>
@@ -143,44 +158,73 @@ export function HomeClient({
             action={<SectionAction href="/fitness" label="View plan" />}
           />
           {todayPlan ? (
-            <div
+            <button
+              onClick={() => setSelectedWorkout(todayPlan)}
               style={{
-                background: '#ffffff',
-                borderRadius: '20px',
-                overflow: 'hidden',
+                width: '100%', textAlign: 'left', cursor: 'pointer', background: 'none', border: 'none', padding: 0,
                 marginTop: '10px',
-                boxShadow: '0 4px 24px rgba(0,0,0,0.08), 0 0 0 1px rgba(0,0,0,0.05)',
               }}
             >
-              <div className="px-5 py-4 border-b border-[var(--border)]">
-                <div className="flex items-center gap-2">
-                  <span className="text-[11px] font-semibold px-2.5 py-1 rounded-full bg-[var(--em-50)] text-[var(--em-700)] border border-[var(--em-200)]">
-                    {todayPlan.day_of_week}
-                  </span>
-                  <span className="text-[13px] font-semibold text-[var(--text-primary)]">{todayPlan.day_type} Day</span>
+              <div style={{
+                background: '#ffffff', borderRadius: '20px', overflow: 'hidden',
+                boxShadow: '0 4px 24px rgba(0,0,0,0.08), 0 0 0 1px rgba(0,0,0,0.05)',
+              }}>
+                {/* Day header */}
+                <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border)' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <span style={{
+                      fontSize: '11px', fontWeight: 700, padding: '3px 10px', borderRadius: '99px',
+                      background: 'var(--em-50)', color: 'var(--em-700)', border: '1px solid var(--em-200)',
+                    }}>
+                      {todayPlan.day_of_week}
+                    </span>
+                    <span style={{ fontSize: '14px', fontWeight: 700, color: 'var(--text-primary)' }}>
+                      {todayPlan.day_type} Day
+                    </span>
+                  </div>
+                  {todayPlan.target_muscle_groups.length > 0 && (
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginTop: '10px' }}>
+                      {todayPlan.target_muscle_groups.map((m) => (
+                        <span key={m} style={{
+                          fontSize: '10px', padding: '2px 8px', borderRadius: '99px',
+                          background: 'var(--bg-surface2)', color: 'var(--text-tertiary)',
+                          border: '1px solid var(--border)',
+                        }}>{m}</span>
+                      ))}
+                    </div>
+                  )}
                 </div>
-                {todayPlan.target_muscle_groups.length > 0 && (
-                  <div className="flex items-center gap-1.5 flex-wrap mt-2">
-                    {todayPlan.target_muscle_groups.map((m) => (
-                      <span key={m} className="text-[10px] px-2 py-0.5 rounded-full bg-[var(--bg-surface2)] text-[var(--text-tertiary)]">{m}</span>
+
+                {/* Exercises preview (max 3) */}
+                {todayPlan.exercises.length > 0 && (
+                  <div>
+                    {todayPlan.exercises.slice(0, 3).map((ex, i) => (
+                      <div key={i} style={{
+                        display: 'flex', alignItems: 'center', gap: '12px',
+                        padding: '12px 20px',
+                        borderBottom: i < Math.min(todayPlan.exercises.length, 3) - 1 ? '1px solid var(--border)' : 'none',
+                      }}>
+                        <span style={{
+                          width: '24px', height: '24px', borderRadius: '50%', flexShrink: 0,
+                          background: 'var(--em-50)', border: '1px solid var(--em-200)',
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          fontSize: '10px', fontWeight: 700, color: 'var(--em-700)',
+                        }}>{i + 1}</span>
+                        <span style={{ flex: 1, fontSize: '13px', color: 'var(--text-primary)', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{ex.name}</span>
+                        {ex.sets && ex.reps && (
+                          <span style={{ fontSize: '11px', fontFamily: 'monospace', color: 'var(--text-muted)', flexShrink: 0 }}>{ex.sets}×{ex.reps}</span>
+                        )}
+                      </div>
                     ))}
+                    {todayPlan.exercises.length > 3 && (
+                      <div style={{ padding: '10px 20px', fontSize: '12px', color: 'var(--em-600)', fontWeight: 600 }}>
+                        +{todayPlan.exercises.length - 3} more exercises →
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
-              {todayPlan.exercises.length > 0 && (
-                <ul>
-                  {todayPlan.exercises.slice(0, 5).map((ex, i) => (
-                    <li key={i} className={`flex items-center gap-3 px-5 py-3.5 ${i < todayPlan.exercises.length - 1 && i < 4 ? 'border-b border-[var(--border)]' : ''}`}>
-                      <span className="w-6 h-6 rounded-full bg-[var(--em-50)] border border-[var(--em-200)] flex items-center justify-center text-[10px] font-bold text-[var(--em-700)] flex-shrink-0">{i + 1}</span>
-                      <span className="flex-1 text-[13px] text-[var(--text-primary)] truncate">{ex.name}</span>
-                      {ex.sets && ex.reps && (
-                        <span className="text-[11px] font-mono text-[var(--text-muted)]">{ex.sets}×{ex.reps}</span>
-                      )}
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
+            </button>
           ) : (
             <EmptyCard
               icon={<Dumbbell size={28} color="var(--border-2)" strokeWidth={1.5} />}
@@ -198,29 +242,48 @@ export function HomeClient({
             action={<SectionAction href="/academics" label="All tasks" />}
           />
           {urgentTasks.length > 0 ? (
-            <div
-              style={{
-                background: '#ffffff',
-                borderRadius: '20px',
-                overflow: 'hidden',
-                marginTop: '10px',
-                boxShadow: '0 4px 24px rgba(0,0,0,0.08), 0 0 0 1px rgba(0,0,0,0.05)',
-              }}
-            >
-              {urgentTasks.map((task, i) => {
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '10px' }}>
+              {urgentTasks.map((task) => {
                 const diff     = new Date(task.due_date).getTime() - Date.now()
                 const isUrgent = diff < 24 * 60 * 60 * 1000
+                const typeKey  = task.type?.toLowerCase().replace(/\s+/g, '') ?? 'other'
+                const { icon: TypeIcon } = TASK_TYPE_CONFIG[typeKey] ?? TASK_TYPE_CONFIG['other']
                 return (
-                  <div key={task.id} className={`flex items-center gap-3 px-5 py-4 ${i < urgentTasks.length - 1 ? 'border-b border-[var(--border)]' : ''}`}>
-                    <span className={`w-2 h-2 rounded-full flex-shrink-0 ${isUrgent ? 'bg-amber-400' : 'bg-[var(--em-400)]'}`} />
-                    <div className="flex-1 min-w-0">
-                      <p className="text-[13.5px] font-medium text-[var(--text-primary)] truncate">{task.title}</p>
-                      <p className="text-[11px] text-[var(--text-muted)] mt-0.5">{task.type}</p>
+                  <button
+                    key={task.id}
+                    onClick={() => setSelectedTask(task)}
+                    style={{
+                      width: '100%', textAlign: 'left', cursor: 'pointer', background: 'none', border: 'none', padding: 0,
+                    }}
+                  >
+                    <div style={{
+                      background: '#ffffff', borderRadius: '16px', padding: '14px 16px',
+                      border: isUrgent ? '1px solid var(--em-700)' : '1px solid var(--border)',
+                      boxShadow: '0 2px 12px rgba(0,0,0,0.04)',
+                      display: 'flex', alignItems: 'center', gap: '12px',
+                    }}>
+                      <div style={{
+                        width: '32px', height: '32px', borderRadius: '10px', flexShrink: 0,
+                        background: isUrgent ? 'var(--em-50)' : 'var(--bg-elevated)',
+                        border: '1px solid var(--border)',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      }}>
+                        <TypeIcon size={14} color={isUrgent ? 'var(--em-700)' : 'var(--text-muted)'} />
+                      </div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <p style={{ fontSize: '13.5px', fontWeight: 700, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{task.title}</p>
+                        <p style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '2px', fontWeight: 500 }}>{task.type}</p>
+                      </div>
+                      <span style={{
+                        fontSize: '11px', fontWeight: 700, fontFamily: 'monospace', flexShrink: 0,
+                        padding: '3px 8px', borderRadius: '8px',
+                        background: isUrgent ? 'var(--em-800)' : 'var(--bg-surface2)',
+                        color: isUrgent ? 'var(--em-300)' : 'var(--text-secondary)',
+                      }}>
+                        {formatRelativeDate(task.due_date)}
+                      </span>
                     </div>
-                    <span className={`text-[11px] font-semibold mono flex-shrink-0 ${isUrgent ? 'text-amber-600' : 'text-[var(--text-tertiary)]'}`}>
-                      {formatRelativeDate(task.due_date)}
-                    </span>
-                  </div>
+                  </button>
                 )
               })}
             </div>
@@ -238,7 +301,177 @@ export function HomeClient({
       {/* Floating AI Chat */}
       <HomeChatPanel contextSnapshot={contextSnapshot} />
 
+      {/* Workout Bottom Sheet */}
+      <AnimatePresence>
+        {selectedWorkout && (
+          <WorkoutSheet plan={selectedWorkout} onClose={() => setSelectedWorkout(null)} />
+        )}
+      </AnimatePresence>
+
+      {/* Task Bottom Sheet */}
+      <AnimatePresence>
+        {selectedTask && (
+          <HomeTaskSheet task={selectedTask} onClose={() => setSelectedTask(null)} />
+        )}
+      </AnimatePresence>
+
     </motion.div>
+  )
+}
+
+/* ─── Workout Bottom Sheet ─────────────────────────────────── */
+function WorkoutSheet({ plan, onClose }: { plan: DayPlan; onClose: () => void }) {
+  return (
+    <>
+      <motion.div
+        initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+        onClick={onClose}
+        style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.35)', zIndex: 200 }}
+      />
+      <motion.div
+        initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }}
+        transition={{ type: 'spring', damping: 30, stiffness: 320 }}
+        style={{
+          position: 'fixed', bottom: 0, left: 0, right: 0,
+          background: '#f8f8f8', borderRadius: '24px 24px 0 0',
+          zIndex: 201, maxHeight: '90vh',
+          display: 'flex', flexDirection: 'column',
+          paddingBottom: 'max(24px, env(safe-area-inset-bottom))',
+        }}
+      >
+        <div style={{ width: '36px', height: '4px', background: '#d1d5db', borderRadius: '99px', margin: '12px auto' }} />
+        <div style={{ padding: '0 20px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid #e5e5e5' }}>
+          <div>
+            <p style={{ fontSize: '16px', fontWeight: 800, color: 'var(--text-primary)' }}>{plan.day_type} Day</p>
+            <p style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '2px' }}>{plan.day_of_week}</p>
+          </div>
+          <button onClick={onClose} style={{ width: '32px', height: '32px', borderRadius: '50%', background: 'var(--bg-surface2)', border: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
+            <X size={16} color="var(--text-muted)" />
+          </button>
+        </div>
+
+        <div style={{ flex: 1, overflowY: 'auto', padding: '20px' }}>
+          {plan.target_muscle_groups.length > 0 && (
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginBottom: '20px' }}>
+              {plan.target_muscle_groups.map((m) => (
+                <span key={m} style={{
+                  fontSize: '12px', fontWeight: 600, padding: '4px 12px', borderRadius: '99px',
+                  background: 'var(--em-50)', color: 'var(--em-700)', border: '1px solid var(--em-200)',
+                }}>{m}</span>
+              ))}
+            </div>
+          )}
+
+          <div style={{ background: '#fff', borderRadius: '20px', overflow: 'hidden', boxShadow: '0 4px 24px rgba(0,0,0,0.04)' }}>
+            {plan.exercises.map((ex, i) => (
+              <div key={i} style={{
+                display: 'flex', alignItems: 'center', gap: '14px', padding: '14px 20px',
+                borderBottom: i < plan.exercises.length - 1 ? '1px solid var(--border)' : 'none',
+              }}>
+                <span style={{
+                  width: '28px', height: '28px', borderRadius: '50%', flexShrink: 0,
+                  background: 'var(--em-50)', border: '1px solid var(--em-200)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  fontSize: '11px', fontWeight: 700, color: 'var(--em-700)',
+                }}>{i + 1}</span>
+                <span style={{ flex: 1, fontSize: '14px', color: 'var(--text-primary)', fontWeight: 600 }}>{ex.name}</span>
+                {ex.sets && ex.reps && (
+                  <span style={{
+                    fontSize: '12px', fontFamily: 'monospace', fontWeight: 700, flexShrink: 0,
+                    padding: '3px 8px', borderRadius: '8px',
+                    background: 'var(--bg-surface2)', color: 'var(--text-secondary)',
+                  }}>{ex.sets}×{ex.reps}</span>
+                )}
+              </div>
+            ))}
+          </div>
+
+          <Link
+            href="/fitness"
+            style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
+              marginTop: '16px', padding: '14px', borderRadius: '16px',
+              background: 'var(--em-500)', color: '#fff',
+              fontSize: '14px', fontWeight: 700, textDecoration: 'none',
+            }}
+          >
+            <Dumbbell size={16} /> View Full Fitness Plan
+          </Link>
+        </div>
+      </motion.div>
+    </>
+  )
+}
+
+/* ─── Task Bottom Sheet (Home) ─────────────────────────────── */
+function HomeTaskSheet({ task, onClose }: { task: Task; onClose: () => void }) {
+  const diff = new Date(task.due_date).getTime() - Date.now()
+  const isOverdue = diff < 0
+  const isUrgent  = diff >= 0 && diff < 24 * 60 * 60 * 1000
+  const typeKey   = task.type?.toLowerCase().replace(/\s+/g, '') ?? 'other'
+  const { icon: TypeIcon, label: typeLabel } = TASK_TYPE_CONFIG[typeKey] ?? TASK_TYPE_CONFIG['other']
+
+  return (
+    <>
+      <motion.div
+        initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+        onClick={onClose}
+        style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.35)', zIndex: 200 }}
+      />
+      <motion.div
+        initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }}
+        transition={{ type: 'spring', damping: 30, stiffness: 320 }}
+        style={{
+          position: 'fixed', bottom: 0, left: 0, right: 0,
+          background: '#f8f8f8', borderRadius: '24px 24px 0 0',
+          zIndex: 201, maxHeight: '80vh',
+          display: 'flex', flexDirection: 'column',
+          paddingBottom: 'max(24px, env(safe-area-inset-bottom))',
+        }}
+      >
+        <div style={{ width: '36px', height: '4px', background: '#d1d5db', borderRadius: '99px', margin: '12px auto' }} />
+        <div style={{ padding: '0 20px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid #e5e5e5' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <TypeIcon size={16} color="var(--text-secondary)" />
+            <span style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{typeLabel}</span>
+          </div>
+          <button onClick={onClose} style={{ width: '32px', height: '32px', borderRadius: '50%', background: 'var(--bg-surface2)', border: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
+            <X size={16} color="var(--text-muted)" />
+          </button>
+        </div>
+
+        <div style={{ padding: '20px' }}>
+          <div style={{ background: '#fff', borderRadius: '20px', padding: '20px', boxShadow: '0 4px 24px rgba(0,0,0,0.04)' }}>
+            <h1 style={{ fontSize: '22px', fontWeight: 800, color: 'var(--text-primary)', marginBottom: '12px' }}>{task.title}</h1>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <span style={{
+                fontSize: '11px', fontWeight: 700, padding: '3px 8px', borderRadius: '8px',
+                background: isOverdue ? '#fef2f2' : isUrgent ? 'var(--em-800)' : 'var(--bg-surface2)',
+                color: isOverdue ? '#ef4444' : isUrgent ? 'var(--em-300)' : 'var(--text-secondary)',
+                display: 'flex', alignItems: 'center', gap: '4px',
+              }}>
+                {isOverdue && <AlertTriangle size={10} />}
+                {isOverdue ? 'Overdue' : isUrgent ? 'Due Soon' : 'Upcoming'}
+              </span>
+              <span style={{ fontSize: '13px', color: 'var(--text-muted)' }}>
+                {formatRelativeDate(task.due_date)} · {new Date(task.due_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+              </span>
+            </div>
+          </div>
+          <Link
+            href="/academics"
+            style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
+              marginTop: '12px', padding: '14px', borderRadius: '16px',
+              background: 'var(--em-500)', color: '#fff',
+              fontSize: '14px', fontWeight: 700, textDecoration: 'none',
+            }}
+          >
+            <GraduationCap size={16} /> View All Tasks
+          </Link>
+        </div>
+      </motion.div>
+    </>
   )
 }
 
@@ -286,11 +519,12 @@ function EmptyCard({ icon, label, action }: { icon: React.ReactNode; label: stri
         textAlign: 'center',
         marginTop: '10px',
         boxShadow: '0 4px 24px rgba(0,0,0,0.08), 0 0 0 1px rgba(0,0,0,0.05)',
+        gap: '8px',
       }}
     >
-      <div style={{ marginBottom: '12px' }}>{icon}</div>
-      <p style={{ fontSize: '13px', color: 'var(--text-tertiary)', fontWeight: 500 }}>{label}</p>
-      {action && <div style={{ marginTop: '8px' }}>{action}</div>}
+      {icon}
+      <p style={{ fontSize: '14px', fontWeight: 600, color: 'var(--text-secondary)' }}>{label}</p>
+      {action}
     </div>
   )
 }

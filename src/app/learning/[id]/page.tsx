@@ -1,6 +1,6 @@
 import { getRoadmapNodes, getRoadmaps } from '@/actions/learning'
 import { AppShell } from '@/components/AppShell'
-import { RoadmapCanvas } from './RoadmapCanvas'
+import { RoadmapList } from './RoadmapList'
 import { notFound } from 'next/navigation'
 import type { Metadata } from 'next'
 
@@ -22,7 +22,7 @@ export default async function RoadmapPage({ params }: { params: Promise<{ id: st
 
   return (
     <AppShell>
-      <RoadmapCanvas roadmap={roadmap} initialNodes={nodes} />
+      <RoadmapList roadmap={roadmap} initialNodes={nodes} />
     </AppShell>
   )
 }

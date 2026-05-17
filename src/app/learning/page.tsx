@@ -1,4 +1,4 @@
-import { getRoadmaps } from '@/actions/learning'
+import { getRoadmaps, getNotes } from '@/actions/learning'
 import { parseRoadmapFromText } from '@/actions/ai'
 import { AppShell } from '@/components/AppShell'
 import { LearningClient } from './LearningClient'
@@ -11,10 +11,11 @@ export const metadata: Metadata = {
 
 export default async function LearningPage() {
   const roadmaps = await getRoadmaps()
+  const notes = await getNotes()
 
   return (
     <AppShell>
-      <LearningClient roadmaps={roadmaps} parseAction={parseRoadmapFromText} />
+      <LearningClient roadmaps={roadmaps} initialNotes={notes} parseAction={parseRoadmapFromText} />
     </AppShell>
   )
 }

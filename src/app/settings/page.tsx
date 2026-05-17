@@ -126,7 +126,10 @@ export default async function SettingsPage() {
           {/* About */}
           <Section title="About" icon={<Info size={13} color="var(--text-muted)" />}>
             <Row label="Version" value="1.0.0" />
-            <Row label="Built by" value="Md Adnan Hossain Mayaz" />
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 18px', borderBottom: '1px solid var(--border)' }}>
+              <span style={{ fontSize: '14px', color: 'var(--text-secondary)', fontWeight: 500 }}>Built by</span>
+              <a href="https://www.linkedin.com/in/md-mayaz-ad/" target="_blank" rel="noopener noreferrer" style={{ fontSize: '13px', color: 'var(--em-600)', fontWeight: 600, textDecoration: 'none' }}>Md Adnan Hossain Mayaz</a>
+            </div>
             <Row label="Stack" value="Next.js 15 · Supabase · Groq" last />
           </Section>
 

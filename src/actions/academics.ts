@@ -91,3 +91,17 @@ export async function updateTaskStatus(id: string, status: string) {
   revalidatePath('/academics')
   return { success: true }
 }
+
+export async function deleteTask(id: string): Promise<TaskState> {
+  const supabase = await createClient()
+
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { error: 'Unauthorized' }
+
+  const { error } = await supabase.from('academic_tasks').delete().eq('id', id).eq('user_id', user.id)
+
+  if (error) return { error: error.message }
+  
+  revalidatePath('/academics')
+  return { success: true }
+}

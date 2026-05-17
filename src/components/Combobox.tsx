@@ -29,7 +29,7 @@ export function Combobox({
   )
 
   return (
-    <div className="relative">
+    <div style={{ position: 'relative' }}>
       <input
         ref={inputRef}
         id={id}
@@ -47,29 +47,56 @@ export function Combobox({
 
       {/* Suggestion chips — shown on focus or when typing */}
       {open && (
-        <div className="mt-2 flex flex-wrap gap-1.5">
-          {(value.trim() === '' ? suggestions : filtered).map((s) => (
-            <button
-              key={s}
-              type="button"
-              onMouseDown={(e) => {
-                e.preventDefault()
-                setValue(s)
-                setOpen(false)
-                inputRef.current?.focus()
-              }}
-              className={clsx(
-                'px-2.5 py-1 rounded-md text-xs font-medium border transition-all',
-                value === s
-                  ? 'bg-[var(--em-700)] text-[var(--em-100)] border-[var(--em-600)]'
-                  : 'bg-[var(--bg-elevated)] text-[var(--text-secondary)] border-[var(--border)] hover:border-[var(--em-700)] hover:text-[var(--em-300)]'
-              )}
-            >
-              {s}
-            </button>
-          ))}
+        <div style={{ marginTop: '8px', display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+          {(value.trim() === '' ? suggestions : filtered).map((s) => {
+            const isSelected = value === s
+            return (
+              <button
+                key={s}
+                type="button"
+                onMouseDown={(e) => {
+                  e.preventDefault()
+                  setValue(s)
+                  setOpen(false)
+                  inputRef.current?.focus()
+                }}
+                style={{
+                  padding: '6px 12px',
+                  borderRadius: '16px',
+                  fontSize: '12px',
+                  fontWeight: 600,
+                  transition: 'all 0.15s ease',
+                  background: isSelected ? 'var(--em-50)' : '#ffffff',
+                  color: isSelected ? 'var(--em-700)' : 'var(--text-secondary)',
+                  border: isSelected ? '1px solid var(--em-200)' : '1px solid var(--border)',
+                  cursor: 'pointer',
+                }}
+                onMouseOver={(e) => {
+                  if (!isSelected) {
+                    e.currentTarget.style.borderColor = 'var(--em-400)'
+                    e.currentTarget.style.color = 'var(--text-primary)'
+                  }
+                }}
+                onMouseOut={(e) => {
+                  if (!isSelected) {
+                    e.currentTarget.style.borderColor = 'var(--border)'
+                    e.currentTarget.style.color = 'var(--text-secondary)'
+                  }
+                }}
+              >
+                {s}
+              </button>
+            )
+          })}
           {value.trim() !== '' && !suggestions.includes(value) && (
-            <span className="px-2.5 py-1 rounded-md text-xs text-[var(--em-600)] border border-dashed border-[var(--em-800)]">
+            <span style={{
+              padding: '6px 12px',
+              borderRadius: '16px',
+              fontSize: '12px',
+              color: 'var(--em-600)',
+              border: '1px dashed var(--em-400)',
+              background: '#ffffff',
+            }}>
               Custom: "{value}"
             </span>
           )}

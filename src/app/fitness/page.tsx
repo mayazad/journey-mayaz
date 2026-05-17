@@ -1,18 +1,21 @@
 import { getWeeklyPlan, getTodayPlan } from '@/actions/fitness'
 import { aiSetDayPlan } from '@/actions/ai'
+import { getTodayMeals, getTodaySleep } from '@/actions/health'
 import { AppShell } from '@/components/AppShell'
 import { FitnessClient } from './FitnessClient'
 import type { Metadata } from 'next'
 
 export const metadata: Metadata = {
   title: 'Fitness — Mayaz OS',
-  description: 'Your weekly workout plan.',
+  description: 'Your weekly workout plan, diet tracker, and sleep log.',
 }
 
 export default async function FitnessPage() {
-  const [weeklyPlan, todayPlan] = await Promise.all([
+  const [weeklyPlan, todayPlan, todayMeals, todaySleep] = await Promise.all([
     getWeeklyPlan(),
     getTodayPlan(),
+    getTodayMeals(),
+    getTodaySleep(),
   ])
 
   return (
@@ -21,6 +24,8 @@ export default async function FitnessPage() {
         weeklyPlan={weeklyPlan}
         todayPlan={todayPlan}
         aiAction={aiSetDayPlan}
+        initialMeals={todayMeals}
+        initialSleep={todaySleep}
       />
     </AppShell>
   )

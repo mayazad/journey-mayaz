@@ -1,5 +1,5 @@
 import { getTasks } from '@/actions/academics'
-import { aiAddTask } from '@/actions/ai'
+import { aiAddTask, previewTask } from '@/actions/ai'
 import { AppShell } from '@/components/AppShell'
 import { AddTaskForm } from './AddTaskForm'
 import { TaskList } from './TaskList'
@@ -16,7 +16,7 @@ export default async function AcademicsPage() {
 
   return (
     <AppShell>
-      <div style={{ minHeight: '100vh', backgroundColor: '#f0f0f0' }}>
+      <div style={{ minHeight: '100vh', backgroundColor: '#f0f0f0', overflowX: 'hidden' }}>
 
         {/* Page Title */}
         <div style={{ padding: '24px 20px 16px' }}>
@@ -29,11 +29,12 @@ export default async function AcademicsPage() {
         </div>
 
         {/* Content */}
-        <div style={{ padding: '0 16px 120px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+        <div style={{ padding: '0 16px 180px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
 
           {/* AI Quick Add */}
           <AIInputBox
             action={aiAddTask}
+            previewAction={previewTask}
             label="AI Quick Add"
             placeholder={`"OS Assignment due next Monday, worth 20% of grade"`}
           />

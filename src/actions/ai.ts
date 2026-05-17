@@ -313,8 +313,114 @@ Rules:
 }
 
 // ════════════════════════════════════════════════════════════════════════════════
-// AI-ASSISTED TASK ENTRY
+// APPEND NODES TO EXISTING ROADMAP (add more topics later)
 // ════════════════════════════════════════════════════════════════════════════════
+export async function appendNodesToRoadmap(
+  roadmapId: string,
+  rawText: string,
+  roadmapTitle: string
+): Promise<{ success: true; nodeCount: number } | { error: string }> {
+  const groq = getGroqClient()
+  if (!groq) return { error: 'Groq API key not configured.' }
+
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { error: 'You must be logged in.' }
+
+  let nodes: { title: string; description?: string; order_index: number }[]
+
+  try {
+    const completion = await groq.chat.completions.create({
+      model: 'llama-3.1-8b-instant',
+      messages: [
+        {
+          role: 'system',
+          content: `You convert unstructured learning roadmap text into a structured JSON array of nodes.
+Each node must have:
+- "title": string (topic name, short, max 50 chars)
+- "description": string or null (1 sentence explanation)
+- "order_index": number (0-based sequence)
+
+Rules:
+- Extract every distinct topic, concept, or skill mentioned.
+- Preserve the logical sequence (basics before advanced).
+- Maximum 25 nodes.
+- Return ONLY a valid JSON array, nothing else.`,
+        },
+        {
+          role: 'user',
+          content: `Roadmap: "${roadmapTitle}"\n\nAdditional content to add:\n${rawText.slice(0, 3000)}`,
+        },
+      ],
+      max_tokens: 2000,
+      temperature: 0.1,
+    })
+
+    nodes = parseJsonArrayFromGroq(
+      completion.choices[0]?.message?.content ?? '[]'
+    ) as typeof nodes
+  } catch (err) {
+    console.error('appendNodesToRoadmap error:', err)
+    return { error: 'Could not parse the content. Try providing clearer topic names.' }
+  }
+
+  if (!nodes || nodes.length === 0) {
+    return { error: 'No topics found. Make sure the content describes learning topics.' }
+  }
+
+  const { error: insertError } = await bulkInsertNodes(roadmapId, nodes)
+  if (insertError) return { error: insertError }
+
+  revalidatePath('/learning')
+  revalidatePath(`/learning/${roadmapId}`)
+  return { success: true, nodeCount: nodes.length }
+}
+
+// ════════════════════════════════════════════════════════════════════════════════
+// AI-ASSISTED TASK ENTRY — Step 1: Preview (parse only, no save)
+// ════════════════════════════════════════════════════════════════════════════════
+export async function previewTask(
+  text: string
+): Promise<{ preview: { title: string; type: string; due_date: string; notes: string | null } } | { error: string }> {
+  const groq = getGroqClient()
+  if (!groq) return { error: 'Groq API key not configured.' }
+
+  const todayStr = new Date().toISOString().split('T')[0]
+  let parsed: { title?: string; type?: string; due_date?: string; notes?: string }
+
+  try {
+    const completion = await groq.chat.completions.create({
+      model: 'llama-3.1-8b-instant',
+      messages: [
+        {
+          role: 'system',
+          content: `Extract academic task data from natural language. Return ONLY valid JSON:
+- title: string (task name)
+- type: string (assignment/exam/presentation/hackathon/project/other)
+- due_date: ISO 8601 datetime (infer from text; today is ${todayStr}T23:59:00)
+- notes: string or null`,
+        },
+        { role: 'user', content: text },
+      ],
+      max_tokens: 300,
+      temperature: 0.1,
+    })
+    parsed = parseJsonFromGroq(completion.choices[0]?.message?.content ?? '{}') as typeof parsed
+  } catch {
+    return { error: 'Could not parse. Try: "OS Assignment due next Monday, worth 20%"' }
+  }
+
+  return {
+    preview: {
+      title: parsed.title ?? text.slice(0, 80),
+      type: parsed.type ?? 'other',
+      due_date: parsed.due_date ?? new Date(Date.now() + 7 * 86400000).toISOString(),
+      notes: parsed.notes ?? null,
+    }
+  }
+}
+
+// Step 2: Confirm & save task
 export async function aiAddTask(
   text: string
 ): Promise<{ success: true; summary: string } | { error: string }> {
@@ -368,8 +474,71 @@ export async function aiAddTask(
 }
 
 // ════════════════════════════════════════════════════════════════════════════════
-// AI-ASSISTED WORKOUT PLAN ENTRY
+// AI-ASSISTED WORKOUT PLAN ENTRY — Step 1: Preview (parse only, no save)
 // ════════════════════════════════════════════════════════════════════════════════
+export async function previewWorkoutPlan(
+  text: string
+): Promise<{ preview: { day_of_week: string; day_type: string; target_muscle_groups: string[]; exercises: string[] } } | { error: string }> {
+  const groq = getGroqClient()
+  if (!groq) return { error: 'Groq API key not configured.' }
+
+  const todayName = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'][new Date().getDay()]
+
+  const dayMatch = text.match(/\b(monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b/i)
+  const inferredDay = dayMatch ? dayMatch[1].charAt(0).toUpperCase() + dayMatch[1].slice(1).toLowerCase() : todayName
+
+  let parsed: { day_of_week?: string; day_type?: string; target_muscle_groups?: string[]; exercises?: string[] }
+
+  try {
+    const completion = await groq.chat.completions.create({
+      model: 'llama-3.1-8b-instant',
+      messages: [
+        {
+          role: 'system',
+          content: `You are a fitness assistant that parses workout plans from casual, conversational text.
+Today is ${todayName}. User explicitly or implicitly requested: ${inferredDay}.
+
+Extract the workout details and return ONLY a valid JSON object with these fields:
+{
+  "day_of_week": "Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday",
+  "day_type": "short workout type e.g. Push, Pull, Legs, Cardio, Home Workout, Rest, Full Body, Light",
+  "target_muscle_groups": ["array of muscles targeted, e.g. Chest, Triceps"],
+  "exercises": ["exercise name with sets/reps if given, e.g. Pushups 3x15", "Plank 3x60s"]
+}
+
+IMPORTANT RULES:
+- If the user mentions exercises (pushups, plank, etc.) ALWAYS include them in exercises[] even if they also say 'rest day'
+- If they say 'rest day' but also mention exercises, use day_type = 'Light' or 'Home Workout'
+- If no day is mentioned, default to ${inferredDay}
+- If no sets/reps given, include the exercise name only
+- target_muscle_groups can be inferred from exercises (pushups → Chest, Triceps)
+- Be flexible with casual language like "ok so", "I wanted", "something like"
+- Return ONLY the JSON object, no explanation`,
+        },
+        { role: 'user', content: text },
+      ],
+      max_tokens: 500,
+      temperature: 0.1,
+    })
+    parsed = parseJsonFromGroq(completion.choices[0]?.message?.content ?? '{}') as typeof parsed
+  } catch {
+    return { error: 'Could not understand that. Try: "Friday is home workout — pushups 3x15 and plank 3x60s"' }
+  }
+
+  // Ensure we never return an empty exercises list if exercises were mentioned in the text
+  const exercises = parsed.exercises ?? []
+
+  return {
+    preview: {
+      day_of_week: parsed.day_of_week ?? inferredDay,
+      day_type: parsed.day_type ?? 'Custom',
+      target_muscle_groups: parsed.target_muscle_groups ?? [],
+      exercises,
+    }
+  }
+}
+
+// Step 2: Confirm & save workout plan
 export async function aiSetDayPlan(
   text: string
 ): Promise<{ success: true; summary: string } | { error: string }> {
@@ -382,26 +551,43 @@ export async function aiSetDayPlan(
 
   let parsed: { day_of_week?: string; day_type?: string; target_muscle_groups?: string[]; exercises?: string[] }
 
+  const todayName = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'][new Date().getDay()]
+
+  const dayMatch = text.match(/\b(monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b/i)
+  const inferredDay = dayMatch ? dayMatch[1].charAt(0).toUpperCase() + dayMatch[1].slice(1).toLowerCase() : todayName
+
   try {
     const completion = await groq.chat.completions.create({
       model: 'llama-3.1-8b-instant',
       messages: [
         {
           role: 'system',
-          content: `Extract weekly workout plan data from natural language. Return ONLY valid JSON:
-- day_of_week: string (Monday/Tuesday/Wednesday/Thursday/Friday/Saturday/Sunday)
-- day_type: string (Push/Pull/Legs/Rest/Cardio or custom)
-- target_muscle_groups: string[] (muscles targeted)
-- exercises: string[] (exercise names, like "Bench Press 4x8")`,
+          content: `You are a fitness assistant that parses workout plans from casual, conversational text.
+Today is ${todayName}. User explicitly or implicitly requested: ${inferredDay}.
+
+Extract the workout details and return ONLY a valid JSON object:
+{
+  "day_of_week": "Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday",
+  "day_type": "short workout type e.g. Push, Pull, Legs, Cardio, Home Workout, Rest, Full Body, Light",
+  "target_muscle_groups": ["muscles targeted"],
+  "exercises": ["exercise name with sets/reps if given"]
+}
+
+IMPORTANT RULES:
+- If the user mentions exercises, ALWAYS include them even if they also say 'rest day'
+- If they say 'rest day' but mention exercises, use day_type = 'Light' or 'Home Workout'
+- If no day is mentioned, default to ${inferredDay}
+- Be flexible with casual language
+- Return ONLY the JSON object`,
         },
         { role: 'user', content: text },
       ],
-      max_tokens: 400,
+      max_tokens: 500,
       temperature: 0.1,
     })
     parsed = parseJsonFromGroq(completion.choices[0]?.message?.content ?? '{}') as typeof parsed
   } catch {
-    return { error: 'Could not parse. Try: "Saturday is my Push day, bench press 4x8, incline dumbbell 3x10"' }
+    return { error: 'Could not understand that. Try: "Friday is home workout — pushups 3x15 and plank 3x60s"' }
   }
 
   const exercises = (parsed.exercises ?? []).map((e) => {

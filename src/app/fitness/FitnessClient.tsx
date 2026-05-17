@@ -2,10 +2,14 @@
 
 import { useState, useTransition } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Dumbbell, Plus, Sparkles, CheckCircle2, AlertCircle, Tag, ChevronDown, ChevronUp, Loader2 } from 'lucide-react'
-import { setDayPlan } from '@/actions/fitness'
+import { Dumbbell, Plus, Sparkles, CheckCircle2, AlertCircle, Tag, ChevronDown, ChevronUp, Loader2, Trash2, Utensils, Moon } from 'lucide-react'
+import { setDayPlan, clearDayPlan } from '@/actions/fitness'
+import { aiSetDayPlan, previewWorkoutPlan } from '@/actions/ai'
 import { Combobox } from '@/components/Combobox'
 import { AIInputBox } from '@/components/AIInputBox'
+import { DietTab } from './DietTab'
+import { SleepTab } from './SleepTab'
+import type { MealLog, SleepLog } from '@/actions/health'
 
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
 const DAY_SUGGESTIONS = ['Push', 'Pull', 'Legs', 'Upper', 'Lower', 'Full Body', 'Cardio', 'Rest', 'Olympic', 'Calisthenics']
@@ -98,6 +102,7 @@ function DayPlanForm({ day, existing, onClose }: {
 }) {
   const [state, setState] = useState<{ error?: string; success?: boolean }>({})
   const [isPending, startTransition] = useTransition()
+  const [isClearing, startClearing] = useTransition()
 
   function handleSubmit(formData: FormData) {
     setState({})
@@ -121,7 +126,19 @@ function DayPlanForm({ day, existing, onClose }: {
     >
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
         <p style={{ fontSize: '15px', fontWeight: 700, color: 'var(--text-primary)' }}>Set {day} Plan</p>
-        <button onClick={onClose} style={{ fontSize: '13px', color: 'var(--text-muted)', background: 'none', border: 'none', cursor: 'pointer' }}>Cancel</button>
+        <div style={{ display: 'flex', gap: '12px' }}>
+          {existing && (
+            <button 
+              type="button" 
+              onClick={() => startClearing(async () => { await clearDayPlan(day); onClose() })}
+              disabled={isClearing}
+              style={{ fontSize: '13px', color: '#ef4444', background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}
+            >
+              {isClearing ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={12} />} Clear
+            </button>
+          )}
+          <button type="button" onClick={onClose} style={{ fontSize: '13px', color: 'var(--text-muted)', background: 'none', border: 'none', cursor: 'pointer' }}>Cancel</button>
+        </div>
       </div>
 
       <form action={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
@@ -176,12 +193,15 @@ function DayPlanForm({ day, existing, onClose }: {
   )
 }
 
-export function FitnessClient({ weeklyPlan, todayPlan, aiAction }: {
+export function FitnessClient({ weeklyPlan, todayPlan, aiAction, initialMeals, initialSleep }: {
   weeklyPlan: DayPlan[]
   todayPlan: DayPlan | null
   aiAction: (text: string) => Promise<{ success: true; summary: string } | { error: string }>
+  initialMeals: MealLog[]
+  initialSleep: SleepLog | null
 }) {
   const [editingDay, setEditingDay] = useState<string | null>(null)
+  const [activeTab, setActiveTab] = useState<'workout' | 'diet' | 'sleep'>('workout')
   const planMap = Object.fromEntries(weeklyPlan.map(p => [p.day_of_week, p]))
   const todayName = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'][new Date().getDay()]
 
@@ -189,55 +209,113 @@ export function FitnessClient({ weeklyPlan, todayPlan, aiAction }: {
     <div style={{ minHeight: '100vh', backgroundColor: '#f0f0f0' }}>
 
       {/* Page Title */}
-      <div style={{ padding: '24px 20px 16px' }}>
-        <h1 style={{ fontSize: '28px', fontWeight: 800, letterSpacing: '-0.5px', color: 'var(--text-primary)', marginBottom: '4px' }}>
-          Fitness
-        </h1>
+      <div style={{ padding: '24px 20px 12px' }}>
+        <h1 style={{ fontSize: '28px', fontWeight: 800, letterSpacing: '-0.5px', color: 'var(--text-primary)', marginBottom: '4px' }}>Fitness</h1>
         <p style={{ fontSize: '13px', color: 'var(--text-muted)', fontWeight: 500 }}>
-          {weeklyPlan.length} of 7 days planned
+          {activeTab === 'workout' ? `${weeklyPlan.length} of 7 days planned` :
+           activeTab === 'diet' ? 'Track meals & macros' : 'Sleep & recovery'}
         </p>
       </div>
 
-      {/* Content */}
-      <div style={{ padding: '0 16px 120px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
-
-        {/* AI Quick Set */}
-        <AIInputBox
-          action={aiAction}
-          label="AI Quick Set"
-          placeholder={`"Saturday is Push day — bench press 4x8, incline dumbbell 3x10, chest and triceps"`}
-        />
-
-        {/* Edit form */}
-        <AnimatePresence>
-          {editingDay && (
-            <DayPlanForm
-              key={editingDay}
-              day={editingDay}
-              existing={planMap[editingDay]}
-              onClose={() => setEditingDay(null)}
-            />
-          )}
-        </AnimatePresence>
-
-        {/* Weekly grid */}
-        <div>
-          <p style={{ fontSize: '11px', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--text-muted)', marginBottom: '10px', padding: '0 4px' }}>Weekly Plan</p>
-          {/* Cards grouped in one white container */}
-          <div style={{ background: '#ffffff', borderRadius: '20px', overflow: 'hidden', boxShadow: '0 4px 24px rgba(0,0,0,0.08), 0 0 0 1px rgba(0,0,0,0.05)' }}>
-            {DAYS.map((day, index) => (
-              <DayCard
-                key={day}
-                day={day}
-                plan={planMap[day]}
-                isToday={day === todayName}
-                onEdit={setEditingDay}
-                isLast={index === DAYS.length - 1}
-              />
-            ))}
-          </div>
+      {/* Tab Bar */}
+      <div style={{ padding: '0 16px 14px' }}>
+        <div style={{ display: 'flex', background: '#e8e8e6', borderRadius: '14px', padding: '4px', gap: '2px' }}>
+          {(['workout', 'diet', 'sleep'] as const).map(tab => (
+            <button
+              key={tab}
+              onClick={() => setActiveTab(tab)}
+              style={{
+                flex: 1, padding: '8px 0', borderRadius: '10px', border: 'none',
+                fontSize: '13px', fontWeight: 700, cursor: 'pointer',
+                transition: 'all 0.2s',
+                background: activeTab === tab ? '#fff' : 'transparent',
+                color: activeTab === tab ? 'var(--text-primary)' : 'var(--text-muted)',
+                boxShadow: activeTab === tab ? '0 1px 4px rgba(0,0,0,0.1)' : 'none',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
+                {tab === 'workout' && (
+                  <motion.div animate={activeTab === 'workout' ? { rotate: [-20, 20, -10, 10, 0], scale: [1, 1.15, 1] } : {}} transition={{ duration: 0.5, ease: "easeInOut" }}>
+                    <Dumbbell size={14} />
+                  </motion.div>
+                )}
+                {tab === 'diet' && (
+                  <motion.div animate={activeTab === 'diet' ? { rotate: [0, -20, 15, -10, 0], scale: [1, 1.1, 1] } : {}} transition={{ duration: 0.6, ease: "easeInOut" }}>
+                    <Utensils size={14} />
+                  </motion.div>
+                )}
+                {tab === 'sleep' && (
+                  <motion.div animate={activeTab === 'sleep' ? { rotate: [0, -15, 10, 0], y: [0, -2, 0] } : {}} transition={{ duration: 1.5, ease: "easeInOut", repeat: activeTab === 'sleep' ? Infinity : 0, repeatType: "reverse" }}>
+                    <Moon size={14} />
+                  </motion.div>
+                )}
+                {tab === 'workout' ? 'Workout' : tab === 'diet' ? 'Diet' : 'Sleep'}
+              </div>
+            </button>
+          ))}
         </div>
       </div>
+
+      {/* Tab Content */}
+      <AnimatePresence mode="wait">
+        {activeTab === 'workout' && (
+          <motion.div key="workout" initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -10 }} transition={{ duration: 0.18 }}>
+            <div style={{ padding: '0 16px 120px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              <AIInputBox
+                action={aiAction}
+                previewAction={previewWorkoutPlan}
+                label="AI Quick Set"
+                placeholder={`e.g. "Friday is a light home day — pushups and plank" or "Saturday is Push — bench press 4x8, incline dumbbell 3x10"`}
+              />
+              <AnimatePresence>
+                {editingDay && (
+                  <DayPlanForm
+                    key={editingDay}
+                    day={editingDay}
+                    existing={planMap[editingDay]}
+                    onClose={() => setEditingDay(null)}
+                  />
+                )}
+              </AnimatePresence>
+              <div>
+                <p style={{ fontSize: '11px', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--text-muted)', marginBottom: '10px', padding: '0 4px' }}>Weekly Plan</p>
+                <div style={{ background: '#ffffff', borderRadius: '20px', overflow: 'hidden', boxShadow: '0 4px 24px rgba(0,0,0,0.08), 0 0 0 1px rgba(0,0,0,0.05)' }}>
+                  {DAYS.map((day, index) => (
+                    <DayCard
+                      key={day}
+                      day={day}
+                      plan={planMap[day]}
+                      isToday={day === todayName}
+                      onEdit={setEditingDay}
+                      isLast={index === DAYS.length - 1}
+                    />
+                  ))}
+                </div>
+              </div>
+            </div>
+          </motion.div>
+        )}
+
+        {activeTab === 'diet' && (
+          <motion.div key="diet" initial={{ opacity: 0, x: 10 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 10 }} transition={{ duration: 0.18 }}>
+            <DietTab
+              initialMeals={initialMeals}
+              todaySleep={initialSleep}
+              workoutType={todayPlan?.day_type ?? null}
+            />
+          </motion.div>
+        )}
+
+        {activeTab === 'sleep' && (
+          <motion.div key="sleep" initial={{ opacity: 0, x: 10 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 10 }} transition={{ duration: 0.18 }}>
+            <SleepTab
+              initialSleep={initialSleep}
+              meals={initialMeals}
+              workoutType={todayPlan?.day_type ?? null}
+            />
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   )
 }

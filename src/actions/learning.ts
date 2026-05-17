@@ -17,6 +17,11 @@ export type RoadmapNode = {
   parent_ids: string[]; position_x: number; position_y: number; order_index: number
 }
 
+export type LearningNote = {
+  id: string; title: string; content?: string
+  created_at: string; updated_at: string
+}
+
 // ── Get all roadmaps for the user ─────────────────────────────────────────────
 export async function getRoadmaps(): Promise<Roadmap[]> {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? ''
@@ -168,15 +173,24 @@ export async function bulkInsertNodes(
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: 'Not authenticated.' }
 
+  // Get current max order_index so appended nodes come after existing ones
+  const { data: existing } = await supabase
+    .from('roadmap_nodes')
+    .select('order_index')
+    .eq('roadmap_id', roadmapId)
+    .order('order_index', { ascending: false })
+    .limit(1)
+  const baseIndex = existing?.[0]?.order_index ?? -1
+
   const rows = nodes.map((n, i) => ({
     roadmap_id: roadmapId,
     user_id: user.id,
     title: n.title,
     description: n.description ?? null,
-    order_index: n.order_index ?? i,
+    order_index: baseIndex + 1 + (n.order_index ?? i),
     parent_ids: n.parent_ids ?? [],
     position_x: 250,
-    position_y: i * 120,
+    position_y: (baseIndex + 1 + i) * 120,
     status: 'not_started' as const,
   }))
 
@@ -187,3 +201,90 @@ export async function bulkInsertNodes(
   revalidatePath(`/learning/${roadmapId}`)
   return {}
 }
+
+// ── Delete a single node ──────────────────────────────────────────────────────
+export async function deleteNode(nodeId: string): Promise<{ error?: string }> {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { error: 'Not authenticated.' }
+
+  const { error } = await supabase
+    .from('roadmap_nodes')
+    .delete()
+    .eq('id', nodeId)
+    .eq('user_id', user.id)
+
+  if (error) return { error: error.message }
+  revalidatePath('/learning')
+  return {}
+}
+
+// ════════════════════════════════════════════════════════════════════════════════
+// LEARNING NOTES
+// ════════════════════════════════════════════════════════════════════════════════
+
+export async function getNotes(): Promise<LearningNote[]> {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? ''
+  if (!supabaseUrl.startsWith('http')) return []
+
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return []
+
+  const { data } = await supabase
+    .from('learning_notes')
+    .select('*')
+    .eq('user_id', user.id)
+    .order('updated_at', { ascending: false })
+
+  return (data ?? []) as LearningNote[]
+}
+
+export async function createNote(title: string, content?: string): Promise<{ id?: string; error?: string }> {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { error: 'Not authenticated.' }
+
+  const { data, error } = await supabase
+    .from('learning_notes')
+    .insert({ user_id: user.id, title, content })
+    .select('id')
+    .single()
+
+  if (error) return { error: error.message }
+  revalidatePath('/learning')
+  return { id: data.id }
+}
+
+export async function updateNote(id: string, title: string, content?: string): Promise<{ error?: string }> {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { error: 'Not authenticated.' }
+
+  const { error } = await supabase
+    .from('learning_notes')
+    .update({ title, content, updated_at: new Date().toISOString() })
+    .eq('id', id)
+    .eq('user_id', user.id)
+
+  if (error) return { error: error.message }
+  revalidatePath('/learning')
+  return {}
+}
+
+export async function deleteNote(id: string): Promise<{ error?: string }> {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { error: 'Not authenticated.' }
+
+  const { error } = await supabase
+    .from('learning_notes')
+    .delete()
+    .eq('id', id)
+    .eq('user_id', user.id)
+
+  if (error) return { error: error.message }
+  revalidatePath('/learning')
+  return {}
+}
+

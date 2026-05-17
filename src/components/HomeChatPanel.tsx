@@ -99,7 +99,7 @@ export function HomeChatPanel({ contextSnapshot }: HomeChatPanelProps) {
         whileTap={{ scale: 0.92 }}
         style={{
           position: 'fixed',
-          bottom: '96px',     // sits above the floating nav pill
+          bottom: '110px',     // sits above the floating nav pill
           right: '20px',
           width: '52px',
           height: '52px',

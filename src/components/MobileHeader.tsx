@@ -40,7 +40,7 @@ function AboutSheet({ onClose }: { onClose: () => void }) {
 
       {/* Info items */}
       {[
-        { label: 'Built by', value: 'Md Adnan Hossain Mayaz' },
+        { label: 'Built by', value: <a href="https://www.linkedin.com/in/md-mayaz-ad/" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--em-600)', textDecoration: 'none' }}>Md Adnan Hossain Mayaz</a> },
         { label: 'Stack', value: 'Next.js 15, Supabase, Groq AI' },
         { label: 'AI Model', value: 'Llama 3.1 · 8B Instant' },
       ].map(({ label, value }) => (
