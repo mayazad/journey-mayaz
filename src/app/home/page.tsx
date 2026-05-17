@@ -24,12 +24,43 @@ export default async function HomePage() {
     firstName = nameParts[nameParts.length - 1]
   }
 
-  const [todayPlan, tasks, roadmapsResult] = await Promise.all([
-    getTodayPlan(),
+  // Resolve user timezone from cookie
+  let userTz = 'UTC'
+  try {
+    const { cookies } = await import('next/headers')
+    const cookieStore = await cookies()
+    userTz = cookieStore.get('user-timezone')?.value || 'UTC'
+  } catch (e) {
+    console.error('Failed to read timezone cookie:', e)
+  }
+
+  // Format today's date and day name in user's local timezone
+  const now = new Date()
+  let dateLabel = now.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })
+  try {
+    dateLabel = now.toLocaleDateString('en-US', {
+      timeZone: userTz,
+      weekday: 'long',
+      month: 'long',
+      day: 'numeric',
+    })
+  } catch (e) {
+    console.error('Timezone conversion failed:', e)
+  }
+
+  const [workoutPlansResult, tasks, roadmapsResult] = await Promise.all([
+    supabase.from('workout_plans').select('id, day_of_week, day_type, target_muscle_groups, exercises').eq('user_id', user?.id || ''),
     getTasks(),
     supabase.from('roadmaps').select('title').eq('user_id', user?.id || '').limit(5)
   ])
 
+  const workoutPlans = workoutPlansResult.data || []
+  
+  // Build a highly rich serialized RAG context snapshot with the full weekly schedule
+  const DAYS = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday']
+  const todayName = DAYS[now.getDay()]
+
+  const todayPlan = workoutPlans.find(wp => wp.day_of_week === todayName) || null
   const roadmaps = roadmapsResult.data || []
 
   const urgentTasks = tasks.filter((t) => {
@@ -37,17 +68,14 @@ export default async function HomePage() {
     return diff > 0 && diff < 7 * 24 * 60 * 60 * 1000
   }).slice(0, 4)
 
-  // Build a highly rich serialized RAG context snapshot for the home chat panel
-  const DAYS = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday']
-  const todayName = DAYS[new Date().getDay()]
-
-  const workoutSection = todayPlan
-    ? `Today's Workout (${todayName} - ${todayPlan.day_type} day):\n  Target Muscles: ${(todayPlan.target_muscle_groups ?? []).join(', ') || 'Not specified'}\n  Exercises:\n  ${
-        Array.isArray(todayPlan.exercises) && todayPlan.exercises.length > 0
-          ? todayPlan.exercises.map((e: any) => e.sets && e.reps ? `* ${e.name} (${e.sets} sets x ${e.reps} reps)` : `* ${e.name}`).join('\n  ')
+  const workoutSection = workoutPlans.length
+    ? `Weekly Workout Schedule:\n  ${workoutPlans.map(wp => {
+        const exercisesStr = Array.isArray(wp.exercises) && wp.exercises.length > 0
+          ? wp.exercises.map((e: any) => e.sets && e.reps ? `* ${e.name} (${e.sets}x${e.reps})` : `* ${e.name}`).join(', ')
           : 'No exercises listed yet'
-      }`
-    : `Today's Workout: No plan set for ${todayName}`
+        return `${wp.day_of_week}: ${wp.day_type} day (Muscles: ${(wp.target_muscle_groups ?? []).join(', ') || 'None'}) — Exercises: [${exercisesStr}]`
+      }).join('\n  ')}`
+    : 'Weekly Workout Schedule: No plans set yet.'
 
   const tasksSection = tasks.length
     ? `Upcoming Academic Tasks:\n  ${tasks.map(t => `* [${t.type.toUpperCase()}] "${t.title}" (Due: ${new Date(t.due_date).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}, Status: ${t.status})`).join('\n  ')}`
@@ -57,7 +85,7 @@ export default async function HomePage() {
     ? `Active Learning Roadmaps: ${roadmaps.map(r => `"${r.title}"`).join(', ')}`
     : 'Active Learning Roadmaps: None'
 
-  const contextSnapshot = `Date: ${new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}\n\n${workoutSection}\n\n${tasksSection}\n\n${learningSection}`
+  const contextSnapshot = `Today's Local Date: ${dateLabel}\nToday's Day of Week: ${todayName}\nTimezone: ${userTz}\n\n${workoutSection}\n\n${tasksSection}\n\n${learningSection}`
 
   return (
     <AppShell>
