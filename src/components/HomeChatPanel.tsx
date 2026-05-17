@@ -85,7 +85,16 @@ function safeId(): string {
     setInput('')
     setShowHotkeys(false)
     startTransition(async () => {
-      const result = await chatWithAI(trimmed, contextSnapshot)
+      const clientTime = new Date().toLocaleString('en-US', {
+        weekday: 'long',
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: true
+      })
+      const result = await chatWithAI(trimmed, contextSnapshot, clientTime)
       if ('reply' in result) {
         addMessage({ role: 'ai', content: result.reply })
       } else {

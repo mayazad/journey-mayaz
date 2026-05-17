@@ -287,7 +287,8 @@ Rules:
 // ════════════════════════════════════════════════════════════════════════════════
 export async function chatWithAI(
   message: string,
-  contextSnapshot: string
+  contextSnapshot: string,
+  clientTime?: string
 ): Promise<{ reply: string } | { error: string }> {
   const resolved = await resolveGroqKey()
   if (!resolved) return { error: 'Please add your Groq API key in Settings to use AI chat.' }
@@ -319,6 +320,8 @@ CRITICAL RAG GROUNDING RULES:
 2. If the context snapshot shows nothing (e.g. "None", "No plan set"), or does not contain the answer, you must state that they have nothing scheduled.
 3. NEVER invent, hallucinate, or make up any meetings, tasks, workouts, or plans (e.g., do NOT make up corporate team meetings, marketing reviews, sales report deadlines, etc.) under any circumstances. If the information is not in the context, clearly say you do not see anything scheduled.
 4. Do not access or mention Vault/password data. No emojis. Under 150 words per reply.
+
+${clientTime ? `User's Current Date & Time: ${clientTime}` : ''}
 
 Context:
 ${contextSnapshot}`,
