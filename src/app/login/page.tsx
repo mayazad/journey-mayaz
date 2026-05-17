@@ -7,6 +7,8 @@ import { createClient } from '@/lib/supabase/client'
 import { Eye, EyeOff, Send, Mail, Lock, User, AtSign } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 
+import { resolveUsername } from '@/actions/admin'
+
 type Mode = 'signin' | 'signup'
 
 function LoginForm() {
@@ -31,7 +33,19 @@ function LoginForm() {
     setError('')
     start(async () => {
       if (mode === 'signin') {
-        const { error } = await supabase.auth.signInWithPassword({ email, password })
+        let loginEmail = email.trim()
+
+        // If it's a username (no @ symbol), resolve it to their registered email first
+        if (!loginEmail.includes('@')) {
+          const resolvedEmail = await resolveUsername(loginEmail)
+          if (!resolvedEmail) {
+            setError('Username not found')
+            return
+          }
+          loginEmail = resolvedEmail
+        }
+
+        const { error } = await supabase.auth.signInWithPassword({ email: loginEmail, password })
         if (error) { setError(error.message); return }
         window.location.href = '/home'
       } else {
@@ -203,20 +217,24 @@ function LoginForm() {
                   </AnimatePresence>
 
                   {/* Email */}
-                  <div>
-                    <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: 'rgba(255,255,255,0.4)', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: '8px' }}>
-                      Email
-                    </label>
-                    <div style={{ position: 'relative' }}>
-                      <Mail size={15} color="rgba(255,255,255,0.25)" style={{ position: 'absolute', left: '14px', top: '50%', transform: 'translateY(-50%)' }} />
-                      <input
-                        id="email" type="email" required
-                        value={email} onChange={e => setEmail(e.target.value)}
-                        placeholder="you@example.com"
-                        style={inputStyle}
-                      />
-                    </div>
-                  </div>
+                   {/* Email or Username */}
+                   <div>
+                     <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: 'rgba(255,255,255,0.4)', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: '8px' }}>
+                       {mode === 'signin' ? 'Username or Email' : 'Email Address'}
+                     </label>
+                     <div style={{ position: 'relative' }}>
+                       <Mail size={15} color="rgba(255,255,255,0.25)" style={{ position: 'absolute', left: '14px', top: '50%', transform: 'translateY(-50%)' }} />
+                       <input
+                         id="email"
+                         type={mode === 'signin' ? 'text' : 'email'}
+                         required
+                         value={email}
+                         onChange={e => setEmail(e.target.value)}
+                         placeholder={mode === 'signin' ? 'adnan or you@example.com' : 'you@example.com'}
+                         style={inputStyle}
+                       />
+                     </div>
+                   </div>
 
                   {/* Password */}
                   <div>

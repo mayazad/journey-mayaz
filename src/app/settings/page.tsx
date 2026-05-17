@@ -5,6 +5,7 @@ import { Shield, Cpu, User, Info, Lock } from 'lucide-react'
 import { ClearBriefingCacheButton } from './ClearBriefingCacheButton'
 import { AvatarUpload } from './AvatarUpload'
 import { GroqKeyInput } from './GroqKeyInput'
+import { ProfileNameInput } from './ProfileNameInput'
 import type { Metadata } from 'next'
 
 export const metadata: Metadata = {
@@ -83,7 +84,7 @@ export default async function SettingsPage() {
                 initials={initials}
               />
             )}
-            <Row label="Name" value={rawName} />
+            <ProfileNameInput initialName={rawName} />
             <Row label="Email" value={user?.email || '—'} />
             <Row label="User ID" value={user?.id ? `${user.id.slice(0, 8)}…` : '—'} last />
           </Section>
