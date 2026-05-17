@@ -1,4 +1,5 @@
 import { AppShell } from '@/components/AppShell'
+import { getAuthUser } from '@/lib/auth'
 import { createClient } from '@/lib/supabase/server'
 import { Shield, Cpu, User, Info, Lock } from 'lucide-react'
 import { ClearBriefingCacheButton } from './ClearBriefingCacheButton'
@@ -29,8 +30,8 @@ const Row = ({ label, value, last }: { label: string; value?: string; last?: boo
 )
 
 export default async function SettingsPage() {
+  const user = await getAuthUser()
   const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
 
   const rawName = (user?.user_metadata?.full_name as string | undefined) ||
                   (user?.user_metadata?.name as string | undefined) ||

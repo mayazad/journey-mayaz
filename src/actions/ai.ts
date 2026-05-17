@@ -70,14 +70,68 @@ export async function generateDailyBriefing(
     firstName = nameParts[nameParts.length - 1]
   }
 
-  // Determine cache slot
+  // Determine cache slot in user's local timezone
   const now        = new Date()
-  const period     = now.getHours() < 12 ? 'morning' : 'afternoon'
-  const todayDate  = now.toISOString().split('T')[0] // YYYY-MM-DD
-  const dateLabel  = now.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })
-  const DAYS       = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday']
-  const todayName  = DAYS[now.getDay()]
-  const in7Days    = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString()
+  let userTz       = 'UTC'
+  try {
+    const { cookies } = await import('next/headers')
+    const cookieStore = await cookies()
+    userTz = cookieStore.get('user-timezone')?.value || 'UTC'
+  } catch (e) {
+    console.error('Failed to read timezone cookie:', e)
+  }
+
+  // Format current hour in user's local timezone
+  let serverHour = now.getHours()
+  try {
+    const formatter = new Intl.DateTimeFormat('en-US', {
+      timeZone: userTz,
+      hour: 'numeric',
+      hour12: false,
+    })
+    serverHour = parseInt(formatter.format(now), 10)
+  } catch (e) {
+    console.error('Timezone format failed, fallback to server time:', e)
+  }
+
+  const period     = serverHour < 12 ? 'morning' : 'afternoon'
+  
+  // Format current date and day name in user's local timezone
+  let todayDate = now.toISOString().split('T')[0]
+  let dateLabel = now.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })
+  let todayName = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'][now.getDay()]
+  try {
+    const dFormatter = new Intl.DateTimeFormat('en-US', {
+      timeZone: userTz,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    })
+    const formattedParts = dFormatter.formatToParts(now)
+    const y = formattedParts.find(p => p.type === 'year')?.value ?? ''
+    const m = formattedParts.find(p => p.type === 'month')?.value ?? ''
+    const d = formattedParts.find(p => p.type === 'day')?.value ?? ''
+    if (y && m && d) {
+      todayDate = `${y}-${m}-${d}`
+    }
+
+    dateLabel = now.toLocaleDateString('en-US', {
+      timeZone: userTz,
+      weekday: 'long',
+      month: 'long',
+      day: 'numeric',
+    })
+
+    const dayFormatter = new Intl.DateTimeFormat('en-US', {
+      timeZone: userTz,
+      weekday: 'long',
+    })
+    todayName = dayFormatter.format(now)
+  } catch (e) {
+    console.error('Timezone date conversion failed:', e)
+  }
+
+  const in7Days = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString()
 
   // ── Check cache (skip if /dailybrief forces a fresh generation) ──
   if (!opts.skipCache) {
@@ -538,6 +592,34 @@ IMPORTANT RULES:
   }
 }
 
+// Helper to parse complex workout plan lines
+function parseExerciseLine(line: string) {
+  const cleaned = line.trim()
+  if (!cleaned) return null
+
+  let rest: string | undefined
+  let nameAndReps = cleaned
+
+  const restMatch = cleaned.match(/(?:\(|,|^|\s)Rest:\s*([^\)]+)/i)
+  if (restMatch) {
+    rest = restMatch[1].trim()
+    nameAndReps = cleaned.replace(/\s*\(?Rest:\s*[^\)]+\)?/i, '').trim()
+  }
+
+  const match = nameAndReps.match(/^(.+?)\s+(\d+)\s*[x×]\s*(.+?)(?:\s+(.*))?$/i)
+  if (match) {
+    return {
+      name: match[1].trim(),
+      sets: match[2].trim(),
+      reps: match[3].trim(),
+      rest,
+      notes: match[4]?.trim() || undefined
+    }
+  }
+
+  return { name: nameAndReps, rest }
+}
+
 // Step 2: Confirm & save workout plan
 export async function aiSetDayPlan(
   text: string
@@ -549,7 +631,13 @@ export async function aiSetDayPlan(
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: 'You must be logged in.' }
 
-  let parsed: { day_of_week?: string; day_type?: string; target_muscle_groups?: string[]; exercises?: string[] }
+  let parsed: {
+    day_of_week?: string
+    day_type?: string
+    warmup?: string
+    target_muscle_groups?: string[]
+    exercises?: string[]
+  }
 
   const todayName = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'][new Date().getDay()]
 
@@ -569,8 +657,9 @@ Extract the workout details and return ONLY a valid JSON object:
 {
   "day_of_week": "Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday",
   "day_type": "short workout type e.g. Push, Pull, Legs, Cardio, Home Workout, Rest, Full Body, Light",
+  "warmup": "warmup instructions e.g. 5 mins walk, leg swings, or null if none",
   "target_muscle_groups": ["muscles targeted"],
-  "exercises": ["exercise name with sets/reps if given"]
+  "exercises": ["exercise name with sets/reps if given e.g. Bench Press 3x8-10 (Rest: 90s)"]
 }
 
 IMPORTANT RULES:
@@ -582,7 +671,7 @@ IMPORTANT RULES:
         },
         { role: 'user', content: text },
       ],
-      max_tokens: 500,
+      max_tokens: 600,
       temperature: 0.1,
     })
     parsed = parseJsonFromGroq(completion.choices[0]?.message?.content ?? '{}') as typeof parsed
@@ -590,17 +679,16 @@ IMPORTANT RULES:
     return { error: 'Could not understand that. Try: "Friday is home workout — pushups 3x15 and plank 3x60s"' }
   }
 
-  const exercises = (parsed.exercises ?? []).map((e) => {
-    const match = String(e).match(/^(.+?)\s+(\d+)x(\d+)$/)
-    if (match) return { name: match[1].trim(), sets: match[2], reps: match[3] }
-    return { name: String(e) }
-  })
+  const exercises = (parsed.exercises ?? [])
+    .map((e) => parseExerciseLine(String(e)))
+    .filter(Boolean)
 
   const { error } = await supabase.from('workout_plans').upsert(
     {
       user_id: user.id,
       day_of_week: parsed.day_of_week ?? 'Monday',
       day_type: parsed.day_type ?? 'Custom',
+      warmup: parsed.warmup ?? null,
       target_muscle_groups: parsed.target_muscle_groups ?? [],
       exercises,
       updated_at: new Date().toISOString(),

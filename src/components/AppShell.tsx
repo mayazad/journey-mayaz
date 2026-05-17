@@ -1,11 +1,13 @@
+import { getAuthUser } from '@/lib/auth'
 import { createClient } from '@/lib/supabase/server'
+import { TimezoneSetter } from './TimezoneSetter'
 import Sidebar from './Sidebar'
 import { BottomNav } from './BottomNav'
 import { MobileHeader } from './MobileHeader'
 
 export async function AppShell({ children }: { children: React.ReactNode }) {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  // Cached — if the page already called getAuthUser(), this is free (0 extra DB calls)
+  const user = await getAuthUser()
 
   const rawName   = user?.user_metadata?.full_name as string | undefined
   const userEmail = user?.email
@@ -19,7 +21,8 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
       : parts[0]
   }
 
-  // Fetch avatar from profiles table
+  // Fetch avatar from profiles — only needs one client call now
+  const supabase = await createClient()
   const { data: profile } = user
     ? await supabase.from('profiles').select('avatar_url').eq('id', user.id).single()
     : { data: null }
@@ -28,6 +31,9 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
 
   return (
     <div style={{ display: 'flex', minHeight: '100vh', backgroundColor: 'var(--bg-base)' }}>
+      {/* Timezone setter — client component, no React warnings */}
+      <TimezoneSetter />
+
       {/* Desktop Sidebar — hidden on mobile via CSS */}
       <Sidebar userName={rawName} userEmail={userEmail} />
 

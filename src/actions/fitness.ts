@@ -3,7 +3,7 @@
 import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 
-export type Exercise = { name: string; sets?: string; reps?: string; notes?: string }
+export type Exercise = { name: string; sets?: string; reps?: string; rest?: string; notes?: string }
 
 export type DayPlan = {
   id: string
@@ -11,6 +11,7 @@ export type DayPlan = {
   day_type: string
   target_muscle_groups: string[]
   exercises: Exercise[]
+  warmup?: string
 }
 
 export type PlanState = { error?: string; success?: boolean }
@@ -56,6 +57,38 @@ export async function getTodayPlan(): Promise<DayPlan | null> {
   return data as DayPlan | null
 }
 
+// ── Helper to parse complex workout plan lines ────────────────────────────────
+function parseExerciseLine(line: string) {
+  const cleaned = line.trim()
+  if (!cleaned) return null
+
+  let rest: string | undefined
+  let nameAndReps = cleaned
+
+  // Match "Rest: 90-120s" or "Rest: 60s" (with or without parentheses)
+  const restMatch = cleaned.match(/(?:\(|,|^|\s)Rest:\s*([^\)]+)/i)
+  if (restMatch) {
+    rest = restMatch[1].trim()
+    nameAndReps = cleaned.replace(/\s*\(?Rest:\s*[^\)]+\)?/i, '').trim()
+  }
+
+  // Parse "Exercise Name Sets x Reps" (supporting unicode × as well)
+  // E.g. "Plank 3x30-60s" -> sets: "3", reps: "30-60s"
+  // E.g. "Walking Lunges 3x10 each leg" -> sets: "3", reps: "10", notes: "each leg"
+  const match = nameAndReps.match(/^(.+?)\s+(\d+)\s*[x×]\s*(.+?)(?:\s+(.*))?$/i)
+  if (match) {
+    return {
+      name: match[1].trim(),
+      sets: match[2].trim(),
+      reps: match[3].trim(),
+      rest,
+      notes: match[4]?.trim() || undefined
+    }
+  }
+
+  return { name: nameAndReps, rest }
+}
+
 // ── Upsert a day's plan (create or update) ────────────────────────────────────
 export async function setDayPlan(_prev: PlanState, formData: FormData): Promise<PlanState> {
   const supabase = await createClient()
@@ -64,6 +97,7 @@ export async function setDayPlan(_prev: PlanState, formData: FormData): Promise<
 
   const day_of_week = formData.get('day_of_week') as string
   const day_type    = formData.get('day_type') as string
+  const warmup      = formData.get('warmup') as string
   const muscleRaw   = formData.get('target_muscle_groups') as string
   const exercisesRaw = formData.get('exercises') as string
 
@@ -73,20 +107,11 @@ export async function setDayPlan(_prev: PlanState, formData: FormData): Promise<
     ? muscleRaw.split(',').map((m) => m.trim()).filter(Boolean)
     : []
 
-  // Parse exercises — one per line "Bench Press 4x8" or structured
   const exercises: Exercise[] = exercisesRaw
     ? exercisesRaw
         .split('\n')
-        .map((line) => line.trim())
-        .filter(Boolean)
-        .map((line) => {
-          // Try to parse "Exercise Name SetsxReps"
-          const match = line.match(/^(.+?)\s+(\d+)x(\d+)\s*(.*)$/)
-          if (match) {
-            return { name: match[1].trim(), sets: match[2], reps: match[3], notes: match[4].trim() || undefined }
-          }
-          return { name: line }
-        })
+        .map((line) => parseExerciseLine(line))
+        .filter(Boolean) as Exercise[]
     : []
 
   const { error } = await supabase.from('workout_plans').upsert(
@@ -94,6 +119,7 @@ export async function setDayPlan(_prev: PlanState, formData: FormData): Promise<
       user_id: user.id,
       day_of_week,
       day_type,
+      warmup: warmup?.trim() || null,
       target_muscle_groups,
       exercises,
       updated_at: new Date().toISOString(),

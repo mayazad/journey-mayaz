@@ -1,7 +1,7 @@
-import { generateDailyBriefing } from '@/actions/ai'
 import { getTodayPlan } from '@/actions/fitness'
 import { getTasks } from '@/actions/academics'
 import { AppShell } from '@/components/AppShell'
+import { getAuthUser } from '@/lib/auth'
 import { HomeClient } from './HomeClient'
 import type { Metadata } from 'next'
 
@@ -11,8 +11,18 @@ export const metadata: Metadata = {
 }
 
 export default async function HomePage() {
-  const [briefingData, todayPlan, tasks] = await Promise.all([
-    generateDailyBriefing(),
+  const user = await getAuthUser()
+
+  const rawName = (user?.user_metadata?.full_name as string | undefined) ||
+                  (user?.user_metadata?.name as string | undefined) ||
+                  user?.email?.split('@')[0] || 'there'
+  const nameParts = rawName.trim().split(/\s+/)
+  let firstName = nameParts[0]
+  if (firstName.toLowerCase() === 'md' && nameParts.length > 1) {
+    firstName = nameParts[nameParts.length - 1]
+  }
+
+  const [todayPlan, tasks] = await Promise.all([
     getTodayPlan(),
     getTasks(),
   ])
@@ -38,8 +48,7 @@ export default async function HomePage() {
   return (
     <AppShell>
       <HomeClient
-        briefingMarkdown={briefingData.markdown}
-        userName={briefingData.userName}
+        initialUserName={firstName}
         todayPlan={todayPlan}
         urgentTasks={urgentTasks}
         contextSnapshot={contextSnapshot}

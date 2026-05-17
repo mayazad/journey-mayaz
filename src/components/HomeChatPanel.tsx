@@ -48,8 +48,16 @@ export function HomeChatPanel({ contextSnapshot }: HomeChatPanelProps) {
     setShowHotkeys(val === '/' || val.startsWith('/') && HOTKEYS.some(h => h.key.startsWith(val)))
   }
 
+/** Works in both HTTPS (Vercel) and plain HTTP (local network dev on mobile) */
+function safeId(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID()
+  }
+  return Math.random().toString(36).slice(2) + Date.now().toString(36)
+}
+
   function addMessage(msg: Omit<Message, 'id'>) {
-    setMessages(prev => [...prev, { ...msg, id: crypto.randomUUID() }])
+    setMessages(prev => [...prev, { ...msg, id: safeId() }])
   }
 
   function handleHotkeySelect(hotkey: typeof HOTKEYS[0]) {

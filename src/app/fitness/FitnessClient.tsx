@@ -14,10 +14,11 @@ import type { MealLog, SleepLog } from '@/actions/health'
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
 const DAY_SUGGESTIONS = ['Push', 'Pull', 'Legs', 'Upper', 'Lower', 'Full Body', 'Cardio', 'Rest', 'Olympic', 'Calisthenics']
 
-type Exercise = { name: string; sets?: string; reps?: string }
+type Exercise = { name: string; sets?: string; reps?: string; rest?: string }
 type DayPlan = {
   id: string; day_of_week: string; day_type: string
   target_muscle_groups: string[]; exercises: Exercise[]
+  warmup?: string
 }
 
 function DayCard({ day, plan, isToday, onEdit, isLast }: {
@@ -49,7 +50,7 @@ function DayCard({ day, plan, isToday, onEdit, isLast }: {
               {isToday && <span style={{ fontSize: '10px', fontWeight: 700, padding: '2px 8px', borderRadius: '20px', background: 'var(--em-100)', color: 'var(--em-700)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Today</span>}
             </div>
             <span style={{ fontSize: '12px', color: 'var(--text-muted)', fontStyle: plan ? 'normal' : 'italic' }}>
-              {plan ? `${plan.day_type} · ${plan.exercises?.length ?? 0} exercises` : 'Not planned'}
+              {plan ? `${plan.day_type} · ${(plan.exercises ?? []).length} exercises` : 'Not planned'}
             </span>
           </div>
         </div>
@@ -69,20 +70,44 @@ function DayCard({ day, plan, isToday, onEdit, isLast }: {
         {expanded && plan && (
           <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.2 }} style={{ overflow: 'hidden' }}>
             <div style={{ padding: '0 18px 16px', borderTop: '1px solid var(--border)' }}>
-              {plan.target_muscle_groups?.length > 0 && (
+              
+              {/* Render Warmup notes if present */}
+              {plan.warmup && (
+                <div style={{
+                  background: '#fffbeb', border: '1px solid #fde68a', borderRadius: '12px',
+                  padding: '10px 12px', marginTop: '12px', marginBottom: '8px'
+                }}>
+                  <p style={{ fontSize: '10px', fontWeight: 800, color: '#b45309', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '3px' }}>
+                    🔥 Warm-up instructions
+                  </p>
+                  <p style={{ fontSize: '12.5px', color: '#78350f', margin: 0, whiteSpace: 'pre-wrap', lineHeight: 1.4 }}>
+                    {plan.warmup}
+                  </p>
+                </div>
+              )}
+
+              {(plan.target_muscle_groups ?? []).length > 0 && (
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', margin: '12px 0' }}>
-                  {plan.target_muscle_groups.map((m) => (
-                    <span key={m} style={{ fontSize: '10px', padding: '3px 10px', borderRadius: '20px', background: 'var(--em-50)', border: '1px solid var(--em-200)', color: 'var(--em-700)', fontWeight: 600 }}>{m}</span>
+                  {[...new Set(plan.target_muscle_groups ?? [])].map((m, i) => (
+                    <span key={`${m}-${i}`} style={{ fontSize: '10px', padding: '3px 10px', borderRadius: '20px', background: 'var(--em-50)', border: '1px solid var(--em-200)', color: 'var(--em-700)', fontWeight: 600 }}>{m}</span>
                   ))}
                 </div>
               )}
+
               {Array.isArray(plan.exercises) && plan.exercises.length > 0 ? (
-                <ul style={{ listStyle: 'none', display: 'flex', flexDirection: 'column', gap: '8px', marginTop: plan.target_muscle_groups?.length > 0 ? 0 : '12px' }}>
-                  {plan.exercises.map((ex, i) => (
+                <ul style={{ listStyle: 'none', display: 'flex', flexDirection: 'column', gap: '8px', marginTop: (plan.target_muscle_groups ?? []).length > 0 || plan.warmup ? 0 : '12px' }}>
+                  {(plan.exercises ?? []).map((ex, i) => (
                     <li key={i} style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                       <span style={{ width: '22px', height: '22px', borderRadius: '50%', background: 'var(--em-50)', border: '1px solid var(--em-200)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '10px', fontWeight: 800, color: 'var(--em-700)', flexShrink: 0 }}>{i + 1}</span>
                       <span style={{ flex: 1, fontSize: '13px', color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{ex.name}</span>
-                      {ex.sets && ex.reps && <span style={{ fontSize: '11px', fontFamily: 'monospace', color: 'var(--text-muted)', flexShrink: 0 }}>{ex.sets}×{ex.reps}</span>}
+                      {ex.sets && ex.reps && (
+                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '1px', flexShrink: 0 }}>
+                          <span style={{ fontSize: '11px', fontFamily: 'monospace', color: 'var(--text-muted)', fontWeight: 600 }}>{ex.sets}×{ex.reps}</span>
+                          {ex.rest && (
+                            <span style={{ fontSize: '9px', color: '#f59e0b', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '1px' }}>⏱️ {ex.rest}</span>
+                          )}
+                        </div>
+                      )}
                     </li>
                   ))}
                 </ul>
@@ -151,6 +176,13 @@ function DayPlanForm({ day, existing, onClose }: {
         </div>
 
         <div>
+          <label style={{ fontSize: '11px', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--text-muted)', display: 'block', marginBottom: '6px' }}>Warm-up <span style={{ textTransform: 'none', fontWeight: 400 }}>(e.g. 5-10 mins cardio/dynamic stretching)</span></label>
+          <textarea name="warmup" rows={2} className="field-input" style={{ resize: 'none', fontSize: '12px' }}
+            placeholder="5 min light treadmill walk + dynamic leg swings and bodyweight squats"
+            defaultValue={existing?.warmup ?? ''} />
+        </div>
+
+        <div>
           <label style={{ fontSize: '11px', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--text-muted)', display: 'block', marginBottom: '6px' }}>Target Muscles <span style={{ textTransform: 'none', fontWeight: 400 }}>(comma-separated)</span></label>
           <input name="target_muscle_groups" type="text" className="field-input"
             placeholder="Chest, Triceps, Anterior Deltoid"
@@ -158,10 +190,19 @@ function DayPlanForm({ day, existing, onClose }: {
         </div>
 
         <div>
-          <label style={{ fontSize: '11px', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--text-muted)', display: 'block', marginBottom: '6px' }}>Exercises <span style={{ textTransform: 'none', fontWeight: 400 }}>(one per line, e.g. "Bench Press 4x8")</span></label>
-          <textarea name="exercises" rows={5} className="field-input" style={{ resize: 'none', fontFamily: 'monospace', fontSize: '12px' }}
-            placeholder={"Bench Press 4x8\nIncline Dumbbell 3x10\nCable Flyes 3x12"}
-            defaultValue={existing?.exercises?.map(e => e.sets && e.reps ? `${e.name} ${e.sets}x${e.reps}` : e.name).join('\n') ?? ''} />
+          <label style={{ fontSize: '11px', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--text-muted)', display: 'block', marginBottom: '6px' }}>Exercises <span style={{ textTransform: 'none', fontWeight: 400 }}>(one per line, supports reps, durations, and rest times)</span></label>
+          <textarea name="exercises" rows={6} className="field-input" style={{ resize: 'none', fontFamily: 'monospace', fontSize: '12px' }}
+            placeholder={"Bench Press 4x8 (Rest: 90s)\nPlank 3x30-60s (Rest: 60s)\nCable Flyes 3x12"}
+            defaultValue={existing?.exercises?.map(e => {
+              let line = e.name
+              if (e.sets && e.reps) {
+                line += ` ${e.sets}x${e.reps}`
+              }
+              if (e.rest) {
+                line += ` (Rest: ${e.rest})`
+              }
+              return line
+            }).join('\n') ?? ''} />
         </div>
 
         {state.error && (

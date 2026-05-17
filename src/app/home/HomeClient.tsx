@@ -7,13 +7,15 @@ import {
   Dumbbell, GraduationCap, Sparkles, ChevronRight,
   X, Clock, AlertTriangle, BookOpen, Monitor, Swords, FileText, FolderKanban, MoreHorizontal,
 } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useTransition } from 'react'
 import { HomeChatPanel } from '@/components/HomeChatPanel'
+import { generateDailyBriefing } from '@/actions/ai'
 
 type DayPlan = {
   id: string; day_of_week: string; day_type: string
   target_muscle_groups: string[]
-  exercises: { name: string; sets?: string; reps?: string }[]
+  exercises: { name: string; sets?: string; reps?: string; rest?: string }[]
+  warmup?: string
 }
 
 type Task = {
@@ -66,14 +68,12 @@ const fadeUp = {
 }
 
 export function HomeClient({
-  briefingMarkdown,
-  userName,
+  initialUserName,
   todayPlan,
   urgentTasks,
   contextSnapshot,
 }: {
-  briefingMarkdown: string
-  userName: string
+  initialUserName: string
   todayPlan: DayPlan | null
   urgentTasks: Task[]
   contextSnapshot: string
@@ -81,6 +81,35 @@ export function HomeClient({
   const { date } = useClock()
   const [selectedWorkout, setSelectedWorkout] = useState<DayPlan | null>(null)
   const [selectedTask, setSelectedTask] = useState<Task | null>(null)
+
+  // Client-side daily briefing loader
+  const [briefing, setBriefing] = useState<string | null>(null)
+  const [userName, setUserName] = useState(initialUserName)
+  const [loadingBriefing, setLoadingBriefing] = useState(true)
+
+  useEffect(() => {
+    let active = true
+    async function loadBriefing() {
+      try {
+        const res = await generateDailyBriefing()
+        if (active) {
+          setBriefing(res.markdown)
+          setUserName(res.userName)
+        }
+      } catch (e) {
+        console.error('Failed to load daily briefing:', e)
+        if (active) {
+          setBriefing('## Ready when you are\n\nCould not fetch personalized daily briefing. Try refreshing the page.')
+        }
+      } finally {
+        if (active) {
+          setLoadingBriefing(false)
+        }
+      }
+    }
+    loadBriefing()
+    return () => { active = false }
+  }, [])
 
   return (
     <motion.div
@@ -113,40 +142,55 @@ export function HomeClient({
               boxShadow: '0 4px 24px rgba(0,0,0,0.08), 0 0 0 1px rgba(0,0,0,0.05)',
             }}
           >
-            <ReactMarkdown
-              components={{
-                h1: ({ children }) => (
-                  <h2 style={{ fontSize: '14px', fontWeight: 700, color: 'var(--em-700)', marginTop: '20px', marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <span style={{ display: 'inline-block', width: '3px', height: '14px', background: 'var(--em-400)', borderRadius: '2px', flexShrink: 0 }} />
-                    {children}
-                  </h2>
-                ),
-                h2: ({ children }) => (
-                  <h3 style={{ fontSize: '13px', fontWeight: 700, color: 'var(--em-700)', marginTop: '16px', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <span style={{ display: 'inline-block', width: '3px', height: '12px', background: 'var(--em-300)', borderRadius: '2px', flexShrink: 0 }} />
-                    {children}
-                  </h3>
-                ),
-                h3: ({ children }) => (
-                  <h4 style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-secondary)', marginTop: '12px', marginBottom: '4px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{children}</h4>
-                ),
-                p: ({ children }) => (
-                  <p style={{ fontSize: '13.5px', color: 'var(--text-secondary)', lineHeight: 1.65, marginBottom: '8px' }}>{children}</p>
-                ),
-                ul: ({ children }) => <ul style={{ margin: '6px 0', display: 'flex', flexDirection: 'column', gap: '6px', listStyle: 'none' }}>{children}</ul>,
-                li: ({ children }) => (
-                  <li style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', fontSize: '13.5px', color: 'var(--text-secondary)', lineHeight: 1.6 }}>
-                    <span style={{ marginTop: '7px', width: '5px', height: '5px', borderRadius: '50%', background: 'var(--em-400)', flexShrink: 0 }} />
-                    <span>{children}</span>
-                  </li>
-                ),
-                strong: ({ children }) => (
-                  <strong style={{ fontWeight: 700, color: 'var(--text-primary)' }}>{children}</strong>
-                ),
-              }}
-            >
-              {briefingMarkdown}
-            </ReactMarkdown>
+            {loadingBriefing ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', animation: 'pulse 1.8s cubic-bezier(0.4, 0, 0.6, 1) infinite', padding: '4px 0' }}>
+                <style dangerouslySetInnerHTML={{ __html: `
+                  @keyframes pulse {
+                    0%, 100% { opacity: 0.35; }
+                    50% { opacity: 0.85; }
+                  }
+                ` }} />
+                <div style={{ width: '35%', height: '16px', borderRadius: '6px', background: 'var(--border-2)' }} />
+                <div style={{ width: '100%', height: '12px', borderRadius: '6px', background: 'var(--border)' }} />
+                <div style={{ width: '90%', height: '12px', borderRadius: '6px', background: 'var(--border)' }} />
+                <div style={{ width: '75%', height: '12px', borderRadius: '6px', background: 'var(--border)' }} />
+              </div>
+            ) : (
+              <ReactMarkdown
+                components={{
+                  h1: ({ children }) => (
+                    <h2 style={{ fontSize: '14px', fontWeight: 700, color: 'var(--em-700)', marginTop: '20px', marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <span style={{ display: 'inline-block', width: '3px', height: '14px', background: 'var(--em-400)', borderRadius: '2px', flexShrink: 0 }} />
+                      {children}
+                    </h2>
+                  ),
+                  h2: ({ children }) => (
+                    <h3 style={{ fontSize: '13px', fontWeight: 700, color: 'var(--em-700)', marginTop: '16px', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <span style={{ display: 'inline-block', width: '3px', height: '12px', background: 'var(--em-300)', borderRadius: '2px', flexShrink: 0 }} />
+                      {children}
+                    </h3>
+                  ),
+                  h3: ({ children }) => (
+                    <h4 style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-secondary)', marginTop: '12px', marginBottom: '4px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{children}</h4>
+                  ),
+                  p: ({ children }) => (
+                    <p style={{ fontSize: '13.5px', color: 'var(--text-secondary)', lineHeight: 1.65, marginBottom: '8px' }}>{children}</p>
+                  ),
+                  ul: ({ children }) => <ul style={{ margin: '6px 0', display: 'flex', flexDirection: 'column', gap: '6px', listStyle: 'none' }}>{children}</ul>,
+                  li: ({ children }) => (
+                    <li style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', fontSize: '13.5px', color: 'var(--text-secondary)', lineHeight: 1.6 }}>
+                      <span style={{ marginTop: '7px', width: '5px', height: '5px', borderRadius: '50%', background: 'var(--em-400)', flexShrink: 0 }} />
+                      <span>{children}</span>
+                    </li>
+                  ),
+                  strong: ({ children }) => (
+                    <strong style={{ fontWeight: 700, color: 'var(--text-primary)' }}>{children}</strong>
+                  ),
+                }}
+              >
+                {briefing ?? 'Ready for your daily brief. Generate one using the AI Panel below.'}
+              </ReactMarkdown>
+            )}
           </div>
         </motion.div>
 
@@ -171,20 +215,31 @@ export function HomeClient({
               }}>
                 {/* Day header */}
                 <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border)' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <span style={{
-                      fontSize: '11px', fontWeight: 700, padding: '3px 10px', borderRadius: '99px',
-                      background: 'var(--em-50)', color: 'var(--em-700)', border: '1px solid var(--em-200)',
-                    }}>
-                      {todayPlan.day_of_week}
-                    </span>
-                    <span style={{ fontSize: '14px', fontWeight: 700, color: 'var(--text-primary)' }}>
-                      {todayPlan.day_type} Day
-                    </span>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <span style={{
+                        fontSize: '11px', fontWeight: 700, padding: '3px 10px', borderRadius: '99px',
+                        background: 'var(--em-50)', color: 'var(--em-700)', border: '1px solid var(--em-200)',
+                      }}>
+                        {todayPlan.day_of_week}
+                      </span>
+                      <span style={{ fontSize: '14px', fontWeight: 700, color: 'var(--text-primary)' }}>
+                        {todayPlan.day_type} Day
+                      </span>
+                    </div>
+                    {todayPlan.warmup && (
+                      <span style={{
+                        fontSize: '10px', fontWeight: 700, color: '#f59e0b', background: '#fef3c7',
+                        padding: '2px 8px', borderRadius: '99px', border: '1px solid #fde68a',
+                        display: 'flex', alignItems: 'center', gap: '3px'
+                      }}>
+                        🔥 Warmup
+                      </span>
+                    )}
                   </div>
-                  {todayPlan.target_muscle_groups.length > 0 && (
+                  {(todayPlan.target_muscle_groups ?? []).length > 0 && (
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginTop: '10px' }}>
-                      {todayPlan.target_muscle_groups.map((m) => (
+                      {(todayPlan.target_muscle_groups ?? []).map((m) => (
                         <span key={m} style={{
                           fontSize: '10px', padding: '2px 8px', borderRadius: '99px',
                           background: 'var(--bg-surface2)', color: 'var(--text-tertiary)',
@@ -196,13 +251,13 @@ export function HomeClient({
                 </div>
 
                 {/* Exercises preview (max 3) */}
-                {todayPlan.exercises.length > 0 && (
+                {(todayPlan.exercises ?? []).length > 0 && (
                   <div>
-                    {todayPlan.exercises.slice(0, 3).map((ex, i) => (
+                    {(todayPlan.exercises ?? []).slice(0, 3).map((ex, i) => (
                       <div key={i} style={{
                         display: 'flex', alignItems: 'center', gap: '12px',
                         padding: '12px 20px',
-                        borderBottom: i < Math.min(todayPlan.exercises.length, 3) - 1 ? '1px solid var(--border)' : 'none',
+                        borderBottom: i < Math.min((todayPlan.exercises ?? []).length, 3) - 1 ? '1px solid var(--border)' : 'none',
                       }}>
                         <span style={{
                           width: '24px', height: '24px', borderRadius: '50%', flexShrink: 0,
@@ -212,13 +267,18 @@ export function HomeClient({
                         }}>{i + 1}</span>
                         <span style={{ flex: 1, fontSize: '13px', color: 'var(--text-primary)', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{ex.name}</span>
                         {ex.sets && ex.reps && (
-                          <span style={{ fontSize: '11px', fontFamily: 'monospace', color: 'var(--text-muted)', flexShrink: 0 }}>{ex.sets}×{ex.reps}</span>
+                          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '1px', flexShrink: 0 }}>
+                            <span style={{ fontSize: '11px', fontFamily: 'monospace', color: 'var(--text-muted)', fontWeight: 600 }}>{ex.sets}×{ex.reps}</span>
+                            {ex.rest && (
+                              <span style={{ fontSize: '9px', color: '#f59e0b', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '2px' }}>⏱️ {ex.rest}</span>
+                            )}
+                          </div>
                         )}
                       </div>
                     ))}
-                    {todayPlan.exercises.length > 3 && (
+                    {(todayPlan.exercises ?? []).length > 3 && (
                       <div style={{ padding: '10px 20px', fontSize: '12px', color: 'var(--em-600)', fontWeight: 600 }}>
-                        +{todayPlan.exercises.length - 3} more exercises →
+                        +{(todayPlan.exercises ?? []).length - 3} more exercises →
                       </div>
                     )}
                   </div>
@@ -351,9 +411,24 @@ function WorkoutSheet({ plan, onClose }: { plan: DayPlan; onClose: () => void })
         </div>
 
         <div style={{ flex: 1, overflowY: 'auto', padding: '20px' }}>
-          {plan.target_muscle_groups.length > 0 && (
+          {/* Warmup Section */}
+          {plan.warmup && (
+            <div style={{
+              background: '#fffbeb', border: '1px solid #fde68a', borderRadius: '16px',
+              padding: '14px 16px', marginBottom: '16px'
+            }}>
+              <p style={{ fontSize: '11px', fontWeight: 800, color: '#b45309', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                🔥 WARM-UP INSTRUCTIONS
+              </p>
+              <p style={{ fontSize: '13px', color: '#78350f', lineHeight: 1.5, margin: 0, whiteSpace: 'pre-wrap' }}>
+                {plan.warmup}
+              </p>
+            </div>
+          )}
+
+          {(plan.target_muscle_groups ?? []).length > 0 && (
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginBottom: '20px' }}>
-              {plan.target_muscle_groups.map((m) => (
+              {(plan.target_muscle_groups ?? []).map((m) => (
                 <span key={m} style={{
                   fontSize: '12px', fontWeight: 600, padding: '4px 12px', borderRadius: '99px',
                   background: 'var(--em-50)', color: 'var(--em-700)', border: '1px solid var(--em-200)',
@@ -363,10 +438,10 @@ function WorkoutSheet({ plan, onClose }: { plan: DayPlan; onClose: () => void })
           )}
 
           <div style={{ background: '#fff', borderRadius: '20px', overflow: 'hidden', boxShadow: '0 4px 24px rgba(0,0,0,0.04)' }}>
-            {plan.exercises.map((ex, i) => (
+            {(plan.exercises ?? []).map((ex, i) => (
               <div key={i} style={{
                 display: 'flex', alignItems: 'center', gap: '14px', padding: '14px 20px',
-                borderBottom: i < plan.exercises.length - 1 ? '1px solid var(--border)' : 'none',
+                borderBottom: i < (plan.exercises ?? []).length - 1 ? '1px solid var(--border)' : 'none',
               }}>
                 <span style={{
                   width: '28px', height: '28px', borderRadius: '50%', flexShrink: 0,
@@ -376,11 +451,18 @@ function WorkoutSheet({ plan, onClose }: { plan: DayPlan; onClose: () => void })
                 }}>{i + 1}</span>
                 <span style={{ flex: 1, fontSize: '14px', color: 'var(--text-primary)', fontWeight: 600 }}>{ex.name}</span>
                 {ex.sets && ex.reps && (
-                  <span style={{
-                    fontSize: '12px', fontFamily: 'monospace', fontWeight: 700, flexShrink: 0,
-                    padding: '3px 8px', borderRadius: '8px',
-                    background: 'var(--bg-surface2)', color: 'var(--text-secondary)',
-                  }}>{ex.sets}×{ex.reps}</span>
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '2px', flexShrink: 0 }}>
+                    <span style={{
+                      fontSize: '12px', fontFamily: 'monospace', fontWeight: 700,
+                      padding: '3px 8px', borderRadius: '8px',
+                      background: 'var(--bg-surface2)', color: 'var(--text-secondary)',
+                    }}>{ex.sets}×{ex.reps}</span>
+                    {ex.rest && (
+                      <span style={{ fontSize: '10px', color: '#f59e0b', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '2px' }}>
+                        ⏱️ {ex.rest}
+                      </span>
+                    )}
+                  </div>
                 )}
               </div>
             ))}

@@ -9,6 +9,14 @@ import { useRouter } from 'next/navigation'
 import type { MealLog, SleepLog } from '@/actions/health'
 import ReactMarkdown from 'react-markdown'
 
+/** Safe UUID — works on HTTP (mobile local dev) and HTTPS (Vercel) */
+function safeId(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID()
+  }
+  return Math.random().toString(36).slice(2) + Date.now().toString(36)
+}
+
 type MealPreview = {
   meal_name: string; meal_type: string
   calories: number; protein_g: number; carbs_g: number; fat_g: number; source: string
@@ -91,7 +99,7 @@ export function DietTab({ initialMeals, todaySleep, workoutType }: {
         router.refresh()
         // optimistically update
         setMeals(prev => [...prev, {
-          id: crypto.randomUUID(),
+          id: safeId(),
           meal_name: preview.meal_name,
           meal_type: preview.meal_type as MealLog['meal_type'],
           calories: preview.calories,
