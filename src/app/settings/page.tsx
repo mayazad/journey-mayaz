@@ -4,6 +4,7 @@ import { createClient } from '@/lib/supabase/server'
 import { Shield, Cpu, User, Info, Lock } from 'lucide-react'
 import { ClearBriefingCacheButton } from './ClearBriefingCacheButton'
 import { AvatarUpload } from './AvatarUpload'
+import { GroqKeyInput } from './GroqKeyInput'
 import type { Metadata } from 'next'
 
 export const metadata: Metadata = {
@@ -42,12 +43,14 @@ export default async function SettingsPage() {
     firstName = nameParts[nameParts.length - 1]
   }
 
-  // Fetch avatar from profiles table
+  // Fetch avatar, admin flag, and groq key from profiles table
   const { data: profile } = user
-    ? await supabase.from('profiles').select('avatar_url').eq('id', user.id).single()
+    ? await supabase.from('profiles').select('avatar_url, is_admin, groq_api_key').eq('id', user.id).single()
     : { data: null }
   const avatarUrl = profile?.avatar_url ||
     (user?.user_metadata?.avatar_url as string | undefined) || null
+  const isAdmin   = profile?.is_admin ?? false
+  const groqApiKey = (profile as { groq_api_key?: string | null } | null)?.groq_api_key ?? null
 
   const initials = rawName.trim().slice(0, 2).toUpperCase()
 
@@ -87,18 +90,26 @@ export default async function SettingsPage() {
 
           {/* AI Configuration */}
           <Section title="AI Configuration" icon={<Cpu size={13} color="var(--text-muted)" />}>
-            <div style={{ padding: '14px 18px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <span style={{ fontSize: '14px', color: 'var(--text-secondary)', fontWeight: 500 }}>Groq API</span>
-              <span style={{ fontSize: '12px', fontWeight: 700, padding: '3px 10px', borderRadius: '20px', background: groqConfigured ? 'var(--em-50)' : '#fef2f2', color: groqConfigured ? 'var(--em-700)' : '#dc2626', border: `1px solid ${groqConfigured ? 'var(--em-200)' : '#fecaca'}` }}>
-                {groqConfigured ? '✓ Connected' : '✗ Not set'}
-              </span>
-            </div>
-            <div style={{ padding: '14px 18px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <span style={{ fontSize: '14px', color: 'var(--text-secondary)', fontWeight: 500 }}>Supabase DB</span>
-              <span style={{ fontSize: '12px', fontWeight: 700, padding: '3px 10px', borderRadius: '20px', background: supabaseConfigured ? 'var(--em-50)' : '#fef2f2', color: supabaseConfigured ? 'var(--em-700)' : '#dc2626', border: `1px solid ${supabaseConfigured ? 'var(--em-200)' : '#fecaca'}` }}>
-                {supabaseConfigured ? '✓ Connected' : '✗ Not set'}
-              </span>
-            </div>
+            {isAdmin ? (
+              // Admin sees env key status
+              <>
+                <div style={{ padding: '14px 18px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <span style={{ fontSize: '14px', color: 'var(--text-secondary)', fontWeight: 500 }}>Groq API (Admin key)</span>
+                  <span style={{ fontSize: '12px', fontWeight: 700, padding: '3px 10px', borderRadius: '20px', background: groqConfigured ? 'var(--em-50)' : '#fef2f2', color: groqConfigured ? 'var(--em-700)' : '#dc2626', border: `1px solid ${groqConfigured ? 'var(--em-200)' : '#fecaca'}` }}>
+                    {groqConfigured ? '✓ Connected' : '✗ Not set'}
+                  </span>
+                </div>
+                <div style={{ padding: '14px 18px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <span style={{ fontSize: '14px', color: 'var(--text-secondary)', fontWeight: 500 }}>Supabase DB</span>
+                  <span style={{ fontSize: '12px', fontWeight: 700, padding: '3px 10px', borderRadius: '20px', background: supabaseConfigured ? 'var(--em-50)' : '#fef2f2', color: supabaseConfigured ? 'var(--em-700)' : '#dc2626', border: `1px solid ${supabaseConfigured ? 'var(--em-200)' : '#fecaca'}` }}>
+                    {supabaseConfigured ? '✓ Connected' : '✗ Not set'}
+                  </span>
+                </div>
+              </>
+            ) : (
+              // Non-admin must enter their own key
+              <GroqKeyInput currentKey={groqApiKey} />
+            )}
             <div style={{ padding: '14px 18px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <span style={{ fontSize: '14px', color: 'var(--text-secondary)', fontWeight: 500 }}>AI Model</span>
               <span style={{ fontSize: '13px', color: 'var(--text-muted)' }}>llama-3.1-8b-instant</span>

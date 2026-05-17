@@ -1,7 +1,7 @@
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 
-const PUBLIC_ROUTES = ['/login', '/auth/callback']
+const PUBLIC_ROUTES = ['/', '/login', '/auth/callback', '/pending', '/rejected']
 
 export async function updateSession(request: NextRequest) {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? ''
@@ -12,7 +12,7 @@ export async function updateSession(request: NextRequest) {
     return NextResponse.next({ request })
   }
 
-  const isPublic = PUBLIC_ROUTES.some((r) => path.startsWith(r))
+  const isPublic = PUBLIC_ROUTES.some((r) => path === r || path.startsWith(r + '/'))
 
   let supabaseResponse = NextResponse.next({ request })
 
@@ -49,5 +49,26 @@ export async function updateSession(request: NextRequest) {
     return NextResponse.redirect(homeUrl)
   }
 
+  // Logged in on a protected route — check approval status
+  if (user && !isPublic) {
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('status')
+      .eq('id', user.id)
+      .single()
+
+    if (profile?.status === 'pending') {
+      const url = request.nextUrl.clone()
+      url.pathname = '/pending'
+      return NextResponse.redirect(url)
+    }
+    if (profile?.status === 'rejected') {
+      const url = request.nextUrl.clone()
+      url.pathname = '/rejected'
+      return NextResponse.redirect(url)
+    }
+  }
+
   return supabaseResponse
 }
+

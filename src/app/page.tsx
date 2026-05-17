@@ -1,17 +1,16 @@
 import { redirect } from 'next/navigation'
-import { createClient } from '@/lib/supabase/server'
+import { getAuthUser } from '@/lib/auth'
+import { LandingPage } from './LandingPage'
+import type { Metadata } from 'next'
+
+export const metadata: Metadata = {
+  title: 'Mayaz OS — Your Personal AI Operating System',
+  description:
+    'Track fitness, learning, academics, and daily life — all in one place, powered by AI. Built for people who want to be intentional about their days.',
+}
 
 export default async function RootPage() {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? ''
-
-  if (!supabaseUrl.startsWith('http')) {
-    // Dev mode without Supabase — go straight to home
-    redirect('/home')
-  }
-
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-
+  const user = await getAuthUser()
   if (user) redirect('/home')
-  else redirect('/login')
+  return <LandingPage />
 }

@@ -119,12 +119,25 @@ export function HomeClient({
       style={{ minHeight: '100vh', backgroundColor: '#f0f0f0' }}
     >
       {/* ─── Hero Greeting ─────────────────────────────────── */}
-      <motion.div variants={fadeUp} style={{ padding: '24px 20px 12px', backgroundColor: '#f0f0f0' }}>
-        <p style={{ fontSize: '13px', fontWeight: 500, color: 'var(--text-muted)', marginBottom: '6px' }}>{date}</p>
-        <h1 style={{ fontSize: '28px', fontWeight: 800, letterSpacing: '-0.5px', lineHeight: 1.2, color: 'var(--text-primary)' }}>
-          Welcome back,{' '}
-          <span style={{ color: 'var(--em-600)' }}>{userName}</span>
-        </h1>
+      <motion.div
+        variants={fadeUp}
+        style={{
+          padding: '24px 20px 12px',
+          backgroundColor: '#f0f0f0',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'flex-start',
+        }}
+      >
+        <div>
+          <p style={{ fontSize: '13px', fontWeight: 500, color: 'var(--text-muted)', marginBottom: '6px' }}>{date}</p>
+          <h1 style={{ fontSize: '28px', fontWeight: 800, letterSpacing: '-0.5px', lineHeight: 1.2, color: 'var(--text-primary)' }}>
+            Welcome back,{' '}
+            <span style={{ color: 'var(--em-600)' }}>{userName}</span>
+          </h1>
+        </div>
+
+
       </motion.div>
 
       {/* ─── Content ───────────────────────────────────────── */}
@@ -374,6 +387,8 @@ export function HomeClient({
           <HomeTaskSheet task={selectedTask} onClose={() => setSelectedTask(null)} />
         )}
       </AnimatePresence>
+
+
 
     </motion.div>
   )

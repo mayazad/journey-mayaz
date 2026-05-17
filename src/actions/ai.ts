@@ -5,11 +5,33 @@ import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import { createRoadmap, bulkInsertNodes } from './learning'
 
-// ── Groq client (server-only — GROQ_API_KEY has no NEXT_PUBLIC_ prefix) ──────
-function getGroqClient(): Groq | null {
-  const apiKey = process.env.GROQ_API_KEY
-  if (!apiKey || apiKey === 'your-groq-api-key-here') return null
-  return new Groq({ apiKey })
+// ── Groq key resolver — admin uses env key, others use their stored key ─────
+async function resolveGroqKey(): Promise<{ groq: Groq; isAdmin: boolean } | null> {
+  try {
+    const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return null
+
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('is_admin, groq_api_key')
+      .eq('id', user.id)
+      .single()
+
+    if (profile?.is_admin) {
+      const envKey = process.env.GROQ_API_KEY
+      if (!envKey || envKey === 'your-groq-api-key-here') return null
+      return { groq: new Groq({ apiKey: envKey }), isAdmin: true }
+    }
+
+    if (profile?.groq_api_key) {
+      return { groq: new Groq({ apiKey: profile.groq_api_key }), isAdmin: false }
+    }
+
+    return null // user hasn't set their key yet
+  } catch {
+    return null
+  }
 }
 
 function getTimeOfDay(): string {
@@ -46,18 +68,27 @@ export async function generateDailyBriefing(
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? ''
 
   const fallbackName = 'there'
-  function fallback(name: string): { markdown: string; userName: string } {
+  function fallback(name: string, isAdminUser: boolean): { markdown: string; userName: string } {
     return {
       userName: name,
-      markdown: `## Ready when you are, ${name}\n\n- Add your **Groq API key** to \`.env.local\` to enable personalized AI briefings.\n- Connect your **Supabase project** and run the schema files to start tracking.\n- Once configured, I'll brief you twice a day — morning and afternoon.`,
+      markdown: isAdminUser
+        ? `## Ready when you are, ${name}\n\n- Add your **Groq API key** to \`.env.local\` to enable personalized AI briefings.\n- Once configured, I'll brief you twice a day — morning and afternoon.`
+        : `## Ready when you are, ${name}\n\n- Add your **Groq API key** in Settings to unlock your personalized AI briefings and features.\n- Once configured, I'll brief you twice a day — morning and afternoon.`,
     }
   }
 
-  if (!supabaseUrl.startsWith('http')) return fallback(fallbackName)
+  if (!supabaseUrl.startsWith('http')) return fallback(fallbackName, false)
 
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return fallback(fallbackName)
+  if (!user) return fallback(fallbackName, false)
+
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('is_admin')
+    .eq('id', user.id)
+    .single()
+  const isAdmin = profile?.is_admin ?? false
 
   // Resolve first name
   const rawName = (user.user_metadata?.full_name as string | undefined) ||
@@ -204,12 +235,12 @@ export async function generateDailyBriefing(
     ? 'It is morning. Be energizing and focused. Help the user start the day with clarity and momentum.'
     : 'It is afternoon. Be a calm check-in. Acknowledge what they may have already done and help them refocus for the rest of the day.'
 
-  const groq = getGroqClient()
-  if (!groq) return fallback(firstName)
+  const resolved = await resolveGroqKey()
+  if (!resolved) return fallback(firstName, isAdmin)
 
   let markdown: string
   try {
-    const completion = await groq.chat.completions.create({
+    const completion = await resolved.groq.chat.completions.create({
       model: 'llama-3.1-8b-instant',
       messages: [
         {
@@ -232,10 +263,10 @@ Rules:
       max_tokens: 500,
       temperature: 0.6,
     })
-    markdown = completion.choices[0]?.message?.content ?? fallback(firstName).markdown
+    markdown = completion.choices[0]?.message?.content ?? fallback(firstName, isAdmin).markdown
   } catch (err) {
     console.error('Groq briefing error:', err)
-    return fallback(firstName)
+    return fallback(firstName, isAdmin)
   }
 
   // ── Cache result (only if not skipped) ──
@@ -258,8 +289,8 @@ export async function chatWithAI(
   message: string,
   contextSnapshot: string
 ): Promise<{ reply: string } | { error: string }> {
-  const groq = getGroqClient()
-  if (!groq) return { error: 'Groq API key not configured.' }
+  const resolved = await resolveGroqKey()
+  if (!resolved) return { error: 'Please add your Groq API key in Settings to use AI chat.' }
 
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
@@ -275,7 +306,7 @@ export async function chatWithAI(
   }
 
   try {
-    const completion = await groq.chat.completions.create({
+    const completion = await resolved.groq.chat.completions.create({
       model: 'llama-3.1-8b-instant',
       messages: [
         {
@@ -305,8 +336,8 @@ export async function parseRoadmapFromText(
   title: string,
   description?: string
 ): Promise<{ success: true; roadmapId: string; nodeCount: number } | { error: string }> {
-  const groq = getGroqClient()
-  if (!groq) return { error: 'Groq API key not configured. Add GROQ_API_KEY to .env.local.' }
+  const resolved = await resolveGroqKey()
+  if (!resolved) return { error: 'Please add your Groq API key in Settings to use AI features.' }
 
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
@@ -315,7 +346,7 @@ export async function parseRoadmapFromText(
   let nodes: { title: string; description?: string; order_index: number; parent_ids?: string[] }[]
 
   try {
-    const completion = await groq.chat.completions.create({
+    const completion = await resolved.groq.chat.completions.create({
       model: 'llama-3.1-8b-instant',
       messages: [
         {
@@ -374,8 +405,8 @@ export async function appendNodesToRoadmap(
   rawText: string,
   roadmapTitle: string
 ): Promise<{ success: true; nodeCount: number } | { error: string }> {
-  const groq = getGroqClient()
-  if (!groq) return { error: 'Groq API key not configured.' }
+  const resolved = await resolveGroqKey()
+  if (!resolved) return { error: 'Please add your Groq API key in Settings to use AI features.' }
 
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
@@ -384,7 +415,7 @@ export async function appendNodesToRoadmap(
   let nodes: { title: string; description?: string; order_index: number }[]
 
   try {
-    const completion = await groq.chat.completions.create({
+    const completion = await resolved.groq.chat.completions.create({
       model: 'llama-3.1-8b-instant',
       messages: [
         {
@@ -436,14 +467,14 @@ Rules:
 export async function previewTask(
   text: string
 ): Promise<{ preview: { title: string; type: string; due_date: string; notes: string | null } } | { error: string }> {
-  const groq = getGroqClient()
-  if (!groq) return { error: 'Groq API key not configured.' }
+  const resolved = await resolveGroqKey()
+  if (!resolved) return { error: 'Please add your Groq API key in Settings to use AI features.' }
 
   const todayStr = new Date().toISOString().split('T')[0]
   let parsed: { title?: string; type?: string; due_date?: string; notes?: string }
 
   try {
-    const completion = await groq.chat.completions.create({
+    const completion = await resolved.groq.chat.completions.create({
       model: 'llama-3.1-8b-instant',
       messages: [
         {
@@ -478,8 +509,8 @@ export async function previewTask(
 export async function aiAddTask(
   text: string
 ): Promise<{ success: true; summary: string } | { error: string }> {
-  const groq = getGroqClient()
-  if (!groq) return { error: 'Groq API key not configured.' }
+  const resolved = await resolveGroqKey()
+  if (!resolved) return { error: 'Please add your Groq API key in Settings to use AI features.' }
 
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
@@ -489,7 +520,7 @@ export async function aiAddTask(
   let parsed: { title?: string; type?: string; due_date?: string; notes?: string }
 
   try {
-    const completion = await groq.chat.completions.create({
+    const completion = await resolved.groq.chat.completions.create({
       model: 'llama-3.1-8b-instant',
       messages: [
         {
@@ -533,8 +564,8 @@ export async function aiAddTask(
 export async function previewWorkoutPlan(
   text: string
 ): Promise<{ preview: { day_of_week: string; day_type: string; target_muscle_groups: string[]; exercises: string[] } } | { error: string }> {
-  const groq = getGroqClient()
-  if (!groq) return { error: 'Groq API key not configured.' }
+  const resolved = await resolveGroqKey()
+  if (!resolved) return { error: 'Please add your Groq API key in Settings to use AI features.' }
 
   const todayName = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'][new Date().getDay()]
 
@@ -544,7 +575,7 @@ export async function previewWorkoutPlan(
   let parsed: { day_of_week?: string; day_type?: string; target_muscle_groups?: string[]; exercises?: string[] }
 
   try {
-    const completion = await groq.chat.completions.create({
+    const completion = await resolved.groq.chat.completions.create({
       model: 'llama-3.1-8b-instant',
       messages: [
         {
@@ -624,8 +655,8 @@ function parseExerciseLine(line: string) {
 export async function aiSetDayPlan(
   text: string
 ): Promise<{ success: true; summary: string } | { error: string }> {
-  const groq = getGroqClient()
-  if (!groq) return { error: 'Groq API key not configured.' }
+  const resolved = await resolveGroqKey()
+  if (!resolved) return { error: 'Please add your Groq API key in Settings to use AI features.' }
 
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
@@ -645,7 +676,7 @@ export async function aiSetDayPlan(
   const inferredDay = dayMatch ? dayMatch[1].charAt(0).toUpperCase() + dayMatch[1].slice(1).toLowerCase() : todayName
 
   try {
-    const completion = await groq.chat.completions.create({
+    const completion = await resolved.groq.chat.completions.create({
       model: 'llama-3.1-8b-instant',
       messages: [
         {

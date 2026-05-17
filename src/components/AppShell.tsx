@@ -21,13 +21,23 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
       : parts[0]
   }
 
-  // Fetch avatar from profiles — only needs one client call now
+  // Fetch avatar and admin status from profiles
   const supabase = await createClient()
   const { data: profile } = user
-    ? await supabase.from('profiles').select('avatar_url').eq('id', user.id).single()
+    ? await supabase.from('profiles').select('avatar_url, is_admin').eq('id', user.id).single()
     : { data: null }
   const avatarUrl = profile?.avatar_url ||
     (user?.user_metadata?.avatar_url as string | undefined) || null
+  const isAdmin = profile?.is_admin || false
+
+  let pendingCount = 0
+  if (user && isAdmin) {
+    const { count } = await supabase
+      .from('profiles')
+      .select('*', { count: 'exact', head: true })
+      .eq('status', 'pending')
+    pendingCount = count || 0
+  }
 
   return (
     <div style={{ display: 'flex', minHeight: '100vh', backgroundColor: 'var(--bg-base)' }}>
@@ -35,7 +45,13 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
       <TimezoneSetter />
 
       {/* Desktop Sidebar — hidden on mobile via CSS */}
-      <Sidebar userName={rawName} userEmail={userEmail} />
+      <Sidebar
+        userName={rawName}
+        userEmail={userEmail}
+        avatarUrl={avatarUrl}
+        isAdmin={isAdmin}
+        initialPendingCount={pendingCount}
+      />
 
       {/* Main scrollable area */}
       <div
@@ -49,7 +65,13 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
         className="ml-0 md:ml-[240px]"
       >
         {/* Mobile sticky header */}
-        <MobileHeader userName={displayName} userEmail={userEmail} avatarUrl={avatarUrl} />
+        <MobileHeader
+          userName={displayName}
+          userEmail={userEmail}
+          avatarUrl={avatarUrl}
+          isAdmin={isAdmin}
+          initialPendingCount={pendingCount}
+        />
 
         {/* Page content */}
         <div style={{ flex: 1 }}>

@@ -2,6 +2,7 @@ import { getTodayPlan } from '@/actions/fitness'
 import { getTasks } from '@/actions/academics'
 import { AppShell } from '@/components/AppShell'
 import { getAuthUser } from '@/lib/auth'
+import { createClient } from '@/lib/supabase/server'
 import { HomeClient } from './HomeClient'
 import type { Metadata } from 'next'
 
@@ -12,6 +13,7 @@ export const metadata: Metadata = {
 
 export default async function HomePage() {
   const user = await getAuthUser()
+  const supabase = await createClient()
 
   const rawName = (user?.user_metadata?.full_name as string | undefined) ||
                   (user?.user_metadata?.name as string | undefined) ||

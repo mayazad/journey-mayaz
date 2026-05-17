@@ -1,12 +1,13 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { LogOut, Settings, X, Info, Shield, ChevronRight } from 'lucide-react'
+import { LogOut, Settings, X, Info, Shield, ChevronRight, Bell, ShieldAlert, ShieldCheck } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import Image from 'next/image'
+import { getPendingUsers, approvePendingUser, rejectPendingUser } from '@/actions/admin'
 
 function AboutSheet({ onClose }: { onClose: () => void }) {
   return (
@@ -72,11 +73,70 @@ function AboutSheet({ onClose }: { onClose: () => void }) {
   )
 }
 
-export function MobileHeader({ userName, userEmail, avatarUrl }: { userName?: string; userEmail?: string; avatarUrl?: string | null }) {
-  const [open, setOpen]       = useState(false)
-  const [showAbout, setShowAbout] = useState(false)
+export function MobileHeader({
+  userName,
+  userEmail,
+  avatarUrl,
+  isAdmin = false,
+  initialPendingCount = 0,
+}: {
+  userName?: string
+  userEmail?: string
+  avatarUrl?: string | null
+  isAdmin?: boolean
+  initialPendingCount?: number
+}) {
+  const [open, setOpen]               = useState(false)
+  const [showAbout, setShowAbout]     = useState(false)
+  const [pendingUsers, setPendingUsers] = useState<any[]>([])
+  const [pendingCount, setPendingCount] = useState(initialPendingCount)
+  const [showApprovalsModal, setShowApprovalsModal] = useState(false)
+
   const router   = useRouter()
   const supabase = createClient()
+
+  // Polling for new user registration approvals (admin only)
+  useEffect(() => {
+    if (!isAdmin) return
+    let active = true
+    async function loadPending() {
+      try {
+        const list = await getPendingUsers()
+        if (active) {
+          setPendingUsers(list)
+          setPendingCount(list.length)
+        }
+      } catch (err) {
+        console.error('Failed to load pending users:', err)
+      }
+    }
+    loadPending()
+    const interval = setInterval(loadPending, 30000) // Poll every 30 seconds
+    return () => {
+      active = false
+      clearInterval(interval)
+    }
+  }, [isAdmin])
+
+  async function handleApprove(userId: string) {
+    try {
+      await approvePendingUser(userId)
+      setPendingUsers(prev => prev.filter(u => u.id !== userId))
+      setPendingCount(prev => Math.max(0, prev - 1))
+    } catch (err) {
+      console.error('Approve failed:', err)
+    }
+  }
+
+  async function handleReject(userId: string) {
+    try {
+      await rejectPendingUser(userId)
+      setPendingUsers(prev => prev.filter(u => u.id !== userId))
+      setPendingCount(prev => Math.max(0, prev - 1))
+    } catch (err) {
+      console.error('Reject failed:', err)
+    }
+  }
 
   async function handleSignOut() {
     setOpen(false)
@@ -95,6 +155,23 @@ export function MobileHeader({ userName, userEmail, avatarUrl }: { userName?: st
 
   return (
     <>
+      <style>{`
+        @keyframes adminAvatarPulse {
+          0% {
+            box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7);
+          }
+          70% {
+            box-shadow: 0 0 0 10px rgba(16, 185, 129, 0);
+          }
+          100% {
+            box-shadow: 0 0 0 0 rgba(16, 185, 129, 0);
+          }
+        }
+        .admin-avatar-pulse {
+          animation: adminAvatarPulse 1.8s infinite;
+        }
+      `}</style>
+
       {/* Header bar */}
       <header
         className="md:hidden"
@@ -116,26 +193,45 @@ export function MobileHeader({ userName, userEmail, avatarUrl }: { userName?: st
         <span style={{ fontWeight: 700, fontSize: '17px', letterSpacing: '-0.4px', color: 'var(--text-primary)' }}>
           Mayaz OS
         </span>
-        {/* Avatar button */}
-        <button
-          onClick={() => setOpen(true)}
-          style={{
-            width: '36px', height: '36px',
-            borderRadius: '50%',
-            background: 'var(--em-50)',
-            border: '2px solid var(--em-200)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            cursor: 'pointer',
-            overflow: 'hidden',
-            padding: 0,
-          }}
-        >
-          {avatarUrl ? (
-            <Image src={avatarUrl} alt="Avatar" width={36} height={36} style={{ width: '100%', height: '100%', objectFit: 'cover' }} unoptimized />
-          ) : (
-            <span style={{ fontSize: '12px', fontWeight: 800, color: 'var(--em-700)' }}>{initials}</span>
+
+        {/* Avatar button container */}
+        <div style={{ position: 'relative' }}>
+          <button
+            onClick={() => setOpen(true)}
+            className={isAdmin && pendingCount > 0 ? 'admin-avatar-pulse' : ''}
+            style={{
+              width: '36px', height: '36px',
+              borderRadius: '50%',
+              background: 'var(--em-50)',
+              border: isAdmin && pendingCount > 0 ? '2px solid #10b981' : '2px solid var(--em-200)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              cursor: 'pointer',
+              overflow: 'hidden',
+              padding: 0,
+              outline: 'none',
+            }}
+          >
+            {avatarUrl ? (
+              <Image src={avatarUrl} alt="Avatar" width={36} height={36} style={{ width: '100%', height: '100%', objectFit: 'cover' }} unoptimized />
+            ) : (
+              <span style={{ fontSize: '12px', fontWeight: 800, color: 'var(--em-700)' }}>{initials}</span>
+            )}
+          </button>
+
+          {isAdmin && pendingCount > 0 && (
+            <span style={{
+              position: 'absolute',
+              top: '-1px',
+              right: '-1px',
+              width: '10px',
+              height: '10px',
+              background: '#dc2626',
+              borderRadius: '50%',
+              border: '2px solid #fff',
+              pointerEvents: 'none',
+            }} />
           )}
-        </button>
+        </div>
       </header>
 
       {/* Profile Sheet */}
@@ -214,6 +310,53 @@ export function MobileHeader({ userName, userEmail, avatarUrl }: { userName?: st
                         <ChevronRight size={14} color="var(--border-2)" style={{ marginLeft: 'auto' }} />
                       </Link>
 
+                      {isAdmin && (
+                        <button
+                          onClick={() => {
+                            setOpen(false)
+                            setShowApprovalsModal(true)
+                          }}
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '12px',
+                            padding: '13px 16px',
+                            borderRadius: '12px',
+                            width: '100%',
+                            background: 'none',
+                            border: 'none',
+                            color: 'var(--text-secondary)',
+                            fontSize: '14px',
+                            fontWeight: 500,
+                            cursor: 'pointer',
+                            textAlign: 'left',
+                          }}
+                        >
+                          <ShieldAlert size={17} color={pendingCount > 0 ? '#10b981' : 'var(--text-muted)'} className={pendingCount > 0 ? 'admin-avatar-pulse' : ''} />
+                          <span>Pending Approvals</span>
+                          {pendingCount > 0 && (
+                            <span style={{
+                              marginLeft: 'auto',
+                              background: '#dc2626',
+                              color: '#fff',
+                              fontSize: '10px',
+                              fontWeight: 700,
+                              borderRadius: '50%',
+                              width: '18px',
+                              height: '18px',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                            }}>
+                              {pendingCount}
+                            </span>
+                          )}
+                          {pendingCount === 0 && (
+                            <ChevronRight size={14} color="var(--border-2)" style={{ marginLeft: 'auto' }} />
+                          )}
+                        </button>
+                      )}
+
                       {/* About & Legal */}
                       <button
                         onClick={() => setShowAbout(true)}
@@ -240,6 +383,176 @@ export function MobileHeader({ userName, userEmail, avatarUrl }: { userName?: st
               </AnimatePresence>
             </motion.div>
           </>
+        )}
+      </AnimatePresence>
+
+      {/* Pending Approvals Modal */}
+      <AnimatePresence>
+        {showApprovalsModal && (
+          <div style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: 'rgba(0,0,0,0.4)',
+            backdropFilter: 'blur(8px)',
+            zIndex: 9999,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '16px',
+          }}>
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 10 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 10 }}
+              style={{
+                width: '100%',
+                maxWidth: '480px',
+                background: '#ffffff',
+                borderRadius: '24px',
+                padding: '24px',
+                boxShadow: '0 20px 50px rgba(0,0,0,0.15)',
+                border: '1px solid rgba(0,0,0,0.05)',
+                position: 'relative',
+              }}
+            >
+              <button
+                onClick={() => setShowApprovalsModal(false)}
+                style={{
+                  position: 'absolute',
+                  top: '20px',
+                  right: '20px',
+                  background: '#f3f4f6',
+                  border: 'none',
+                  borderRadius: '50%',
+                  width: '32px',
+                  height: '32px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  cursor: 'pointer',
+                  color: 'var(--text-muted)',
+                }}
+              >
+                <X size={16} />
+              </button>
+
+              <h2 style={{ fontSize: '20px', fontWeight: 800, color: 'var(--text-primary)', marginBottom: '6px', letterSpacing: '-0.5px' }}>
+                Pending Approvals
+              </h2>
+              <p style={{ fontSize: '13px', color: 'var(--text-muted)', marginBottom: '20px' }}>
+                Approve or reject new users requesting access to Mayaz OS.
+              </p>
+
+              <div style={{
+                maxHeight: '320px',
+                overflowY: 'auto',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '12px',
+                marginBottom: '8px',
+              }}>
+                {pendingUsers.length === 0 ? (
+                  <div style={{
+                    textAlign: 'center',
+                    padding: '40px 0',
+                    color: 'var(--text-muted)',
+                    fontSize: '14px',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '12px',
+                  }}>
+                    <ShieldCheck size={36} color="var(--em-500)" style={{ strokeWidth: 1.75 }} />
+                    <span>No pending approval requests.</span>
+                  </div>
+                ) : (
+                  pendingUsers.map(u => (
+                    <div
+                      key={u.id}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        padding: '12px 14px',
+                        background: '#f9fafb',
+                        borderRadius: '16px',
+                        border: '1px solid #f3f4f6',
+                        gap: '12px',
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0, flex: 1 }}>
+                        <div style={{
+                          width: '38px',
+                          height: '38px',
+                          borderRadius: '50%',
+                          background: 'var(--em-50)',
+                          color: 'var(--em-700)',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          fontWeight: 700,
+                          fontSize: '14px',
+                          overflow: 'hidden',
+                          flexShrink: 0,
+                        }}>
+                          {u.avatar_url ? (
+                            <img src={u.avatar_url} alt={u.full_name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                          ) : (
+                            (u.full_name || u.username || '?').slice(0, 2).toUpperCase()
+                          )}
+                        </div>
+                        <div style={{ minWidth: 0 }}>
+                          <h4 style={{ fontSize: '14px', fontWeight: 700, color: 'var(--text-primary)', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {u.full_name || 'Anonymous User'}
+                          </h4>
+                          <p style={{ fontSize: '11px', color: 'var(--text-muted)', margin: '2px 0 0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            @{u.username} · Joined {new Date(u.created_at).toLocaleDateString()}
+                          </p>
+                        </div>
+                      </div>
+
+                      <div style={{ display: 'flex', gap: '8px', flexShrink: 0 }}>
+                        <button
+                          onClick={() => handleReject(u.id)}
+                          style={{
+                            padding: '6px 12px',
+                            borderRadius: '8px',
+                            border: '1px solid #fee2e2',
+                            background: '#fff',
+                            color: '#dc2626',
+                            fontSize: '12px',
+                            fontWeight: 600,
+                            cursor: 'pointer',
+                          }}
+                        >
+                          Reject
+                        </button>
+                        <button
+                          onClick={() => handleApprove(u.id)}
+                          style={{
+                            padding: '6px 12px',
+                            borderRadius: '8px',
+                            border: 'none',
+                            background: 'var(--em-500)',
+                            color: '#fff',
+                            fontSize: '12px',
+                            fontWeight: 600,
+                            cursor: 'pointer',
+                          }}
+                        >
+                          Approve
+                        </button>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </motion.div>
+          </div>
         )}
       </AnimatePresence>
     </>
