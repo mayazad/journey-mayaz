@@ -129,3 +129,20 @@ export async function resolveUsername(username: string) {
   }
   return data as string | null
 }
+
+/* ──────────────────────────────────────────────────────
+   Securely delete the authenticated user's own account (blocking admins)
+────────────────────────────────────────────────────── */
+export async function deleteOwnAccount() {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { error: 'Not authenticated' }
+
+  // Call the secure public RPC delete function
+  const { error } = await supabase.rpc('delete_own_user')
+  if (error) return { error: error.message }
+
+  // Sign out and clear browser session
+  await supabase.auth.signOut()
+  return { success: true }
+}

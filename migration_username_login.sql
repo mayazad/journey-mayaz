@@ -49,3 +49,23 @@ BEGIN
   RETURN v_email;
 END;
 $$;
+
+-- 5. Create a public RPC function to securely let standard users delete their own account (blocking admins)
+CREATE OR REPLACE FUNCTION public.delete_own_user()
+RETURNS VOID
+LANGUAGE plpgsql
+SECURITY DEFINER SET search_path = public
+AS $$
+BEGIN
+  -- Ensure caller is not an admin
+  IF EXISTS (
+    SELECT 1 FROM public.profiles
+    WHERE id = auth.uid() AND is_admin = true
+  ) THEN
+    RAISE EXCEPTION 'Administrators cannot self-delete their accounts to prevent lockout.';
+  END IF;
+
+  -- Delete the user from auth.users (cascades automatically to profile and all data)
+  DELETE FROM auth.users WHERE id = auth.uid();
+END;
+$$;

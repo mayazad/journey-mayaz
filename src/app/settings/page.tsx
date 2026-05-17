@@ -1,11 +1,12 @@
 import { AppShell } from '@/components/AppShell'
 import { getAuthUser } from '@/lib/auth'
 import { createClient } from '@/lib/supabase/server'
-import { Shield, Cpu, User, Info, Lock } from 'lucide-react'
+import { Shield, Cpu, User, Info, Lock, AlertTriangle } from 'lucide-react'
 import { ClearBriefingCacheButton } from './ClearBriefingCacheButton'
 import { AvatarUpload } from './AvatarUpload'
 import { GroqKeyInput } from './GroqKeyInput'
 import { ProfileNameInput } from './ProfileNameInput'
+import { DeleteAccountSection } from './DeleteAccountSection'
 import type { Metadata } from 'next'
 
 export const metadata: Metadata = {
@@ -134,6 +135,11 @@ export default async function SettingsPage() {
                 </p>
               </div>
             </div>
+          </Section>
+
+          {/* Danger Zone */}
+          <Section title="Danger Zone" icon={<AlertTriangle size={13} color="#dc2626" />}>
+            <DeleteAccountSection isAdmin={isAdmin} />
           </Section>
 
           {/* About */}
