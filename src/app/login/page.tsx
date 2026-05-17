@@ -177,7 +177,7 @@ function LoginForm() {
                             <input
                               id="fullName" type="text" required={mode === 'signup'}
                               value={fullName} onChange={e => setFullName(e.target.value)}
-                              placeholder="Adnan Hossain Mayaz"
+                              placeholder="Md Adnan Hossain Mayaz"
                               style={inputStyle}
                             />
                           </div>
@@ -193,7 +193,7 @@ function LoginForm() {
                               id="username" type="text" required={mode === 'signup'}
                               value={username}
                               onChange={e => setUsername(e.target.value.replace(/[^a-z0-9_]/gi, '').toLowerCase())}
-                              placeholder="mayaz"
+                              placeholder="adnan"
                               style={inputStyle}
                             />
                           </div>
