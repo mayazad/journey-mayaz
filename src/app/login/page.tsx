@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useTransition } from 'react'
+import { useState, useTransition, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
@@ -9,7 +9,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 
 type Mode = 'signin' | 'signup'
 
-export default function LoginPage() {
+function LoginForm() {
   const searchParams  = useSearchParams()
   const [mode, setMode]         = useState<Mode>(
     searchParams.get('mode') === 'signup' ? 'signup' : 'signin'
@@ -319,6 +319,26 @@ export default function LoginPage() {
         input { color-scheme: dark; }
       `}</style>
     </div>
+  )
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={
+      <div style={{
+        minHeight: '100vh',
+        background: 'linear-gradient(160deg, #0a1a14 0%, #0d2318 50%, #0a1a14 100%)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        color: '#fff',
+        fontFamily: 'Inter, system-ui, sans-serif'
+      }}>
+        <div style={{ fontSize: '16px', fontWeight: 600, color: 'rgba(255,255,255,0.5)' }}>Loading...</div>
+      </div>
+    }>
+      <LoginForm />
+    </Suspense>
   )
 }
 
