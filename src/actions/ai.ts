@@ -311,12 +311,22 @@ export async function chatWithAI(
       messages: [
         {
           role: 'system',
-          content: `You are the personal AI inside Mayaz OS. You are chatting directly with ${firstName}. Be concise, direct, and personal. You have access to their daily context below — use it when relevant. Do not access or mention Vault/password data. No emojis. Under 150 words per reply.\n\nContext:\n${contextSnapshot}`,
+          content: `You are the personal AI inside Mayaz OS. You are chatting directly with ${firstName}. Be concise, direct, and personal.
+You have access to their daily context below containing workouts, tasks, and learning roadmaps.
+
+CRITICAL RAG GROUNDING RULES:
+1. ONLY answer questions about the user's schedule, tasks, workouts, or plans using the provided context snapshot.
+2. If the context snapshot shows nothing (e.g. "None", "No plan set"), or does not contain the answer, you must state that they have nothing scheduled.
+3. NEVER invent, hallucinate, or make up any meetings, tasks, workouts, or plans (e.g., do NOT make up corporate team meetings, marketing reviews, sales report deadlines, etc.) under any circumstances. If the information is not in the context, clearly say you do not see anything scheduled.
+4. Do not access or mention Vault/password data. No emojis. Under 150 words per reply.
+
+Context:
+${contextSnapshot}`,
         },
         { role: 'user', content: message },
       ],
       max_tokens: 350,
-      temperature: 0.65,
+      temperature: 0.5,
     })
     const reply = completion.choices[0]?.message?.content ?? 'Sorry, I couldn\'t generate a response.'
     return { reply }
