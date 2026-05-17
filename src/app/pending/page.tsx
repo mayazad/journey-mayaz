@@ -11,6 +11,16 @@ export default async function PendingPage() {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 
+  // Redirect instantly if the admin has already approved or rejected their account
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('status')
+    .eq('id', user.id)
+    .single()
+
+  if (profile?.status === 'approved') redirect('/home')
+  if (profile?.status === 'rejected') redirect('/rejected')
+
   return (
     <div style={{
       minHeight: '100vh',
