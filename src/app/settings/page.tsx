@@ -1,13 +1,16 @@
 import { AppShell } from '@/components/AppShell'
 import { getAuthUser } from '@/lib/auth'
 import { createClient } from '@/lib/supabase/server'
-import { Shield, Cpu, User, Info, Lock, AlertTriangle } from 'lucide-react'
+import { Shield, Cpu, User, Info, Lock, AlertTriangle, Dumbbell } from 'lucide-react'
 import { ClearBriefingCacheButton } from './ClearBriefingCacheButton'
 import { AvatarUpload } from './AvatarUpload'
 import { GroqKeyInput } from './GroqKeyInput'
 import { ProfileNameInput } from './ProfileNameInput'
 import { DeleteAccountSection } from './DeleteAccountSection'
+import { FitnessProfileSection } from './FitnessProfileSection'
+import { getFitnessProfile } from '@/actions/fitness'
 import type { Metadata } from 'next'
+
 
 export const metadata: Metadata = {
   title: 'Settings — Mayaz OS',
@@ -56,6 +59,8 @@ export default async function SettingsPage() {
 
   const initials = rawName.trim().slice(0, 2).toUpperCase()
 
+  const fitnessProfile = await getFitnessProfile()
+
   const groqConfigured  = !!(process.env.GROQ_API_KEY && process.env.GROQ_API_KEY !== 'your-groq-api-key-here')
   const supabaseConfigured = !!(process.env.NEXT_PUBLIC_SUPABASE_URL?.startsWith('http'))
 
@@ -90,8 +95,14 @@ export default async function SettingsPage() {
             <Row label="User ID" value={user?.id ? `${user.id.slice(0, 8)}…` : '—'} last />
           </Section>
 
+          {/* Fitness Profile */}
+          <Section title="Fitness & Health" icon={<Dumbbell size={13} color="var(--text-muted)" />}>
+            <FitnessProfileSection initialProfile={fitnessProfile} />
+          </Section>
+
           {/* AI Configuration */}
           <Section title="AI Configuration" icon={<Cpu size={13} color="var(--text-muted)" />}>
+
             {isAdmin ? (
               // Admin sees env key status
               <>

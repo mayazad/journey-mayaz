@@ -181,3 +181,51 @@ export async function clearDayPlan(day_of_week: string): Promise<{ error?: strin
   revalidatePath('/home')
   return {}
 }
+
+// ── Get User Fitness Profile ───────────────────────────────────────────────
+export async function getFitnessProfile() {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return null
+
+  const { data, error } = await supabase
+    .from('user_fitness_profile')
+    .select('*')
+    .eq('user_id', user.id)
+    .single()
+
+  if (error) return null
+  return data
+}
+
+// ── Update User Fitness Profile ───────────────────────────────────────────
+export async function updateFitnessProfile(profile: {
+  height_cm?: number
+  weight_kg?: number
+  age?: number
+  sex?: string
+  fitness_level?: string
+  primary_goal?: string
+  secondary_goals?: string[]
+  available_equipment?: string[]
+  training_days_per_week?: number
+  experience_years?: number
+  injuries_limitations?: string
+}) {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { error: 'Not authenticated' }
+
+  const { error } = await supabase
+    .from('user_fitness_profile')
+    .upsert({
+      user_id: user.id,
+      ...profile,
+      updated_at: new Date().toISOString()
+    })
+
+  if (error) return { error: error.message }
+  revalidatePath('/settings')
+  return { success: true }
+}
+
