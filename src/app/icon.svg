@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32">
+  <defs>
+    <!-- Subtle drop shadow on the S to make it overlap elegantly -->
+    <filter id="shadow" x="-10%" y="-10%" width="130%" height="130%">
+      <feDropShadow dx="0" dy="1" stdDeviation="0.8" flood-color="#000" flood-opacity="0.12" />
+    </filter>
+  </defs>
+  <!-- Beautiful gradient background for the favicon tab to make it pop -->
+  <rect width="32" height="32" rx="7" fill="#fafaf9" />
+  
+  <g transform="translate(1.5, 23)">
+    <!-- O (grounded) -->
+    <text x="0" y="0" font-family="-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', sans-serif" font-weight="900" font-size="19" fill="#064e3b" letter-spacing="0">O</text>
+    
+    <!-- M (grounded) -->
+    <text x="13.5" y="0" font-family="-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', sans-serif" font-weight="900" font-size="19" fill="#064e3b" letter-spacing="0">M</text>
+    
+    <!-- S (elevated, overlapping both, with stroke for visual separation) -->
+    <text x="7" y="0" font-family="-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', sans-serif" font-weight="900" font-size="19" fill="#34d399" stroke="#fafaf9" stroke-width="1.8" stroke-linejoin="round" paint-order="stroke fill" filter="url(#shadow)" letter-spacing="0">S</text>
+  </g>
+</svg>
