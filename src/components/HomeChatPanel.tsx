@@ -44,6 +44,9 @@ export function HomeChatPanel({ contextSnapshot }: HomeChatPanelProps) {
   const [isPending, startTransition]  = useTransition()
   const bottomRef = useRef<HTMLDivElement>(null)
   const inputRef  = useRef<HTMLInputElement>(null)
+  
+  // Cache to ensure flawless instant switching between modes
+  const historyCache = useRef<{ general: Message[] | null; coach: Message[] | null }>({ general: null, coach: null })
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -53,23 +56,43 @@ export function HomeChatPanel({ contextSnapshot }: HomeChatPanelProps) {
     if (open) setTimeout(() => inputRef.current?.focus(), 300)
   }, [open])
 
-  // Load chat history from DB on mount — filtered by current mode
+  // Load chat history from DB on mount & mode switch
   useEffect(() => {
     async function loadHistory() {
       const mode = coachMode ? 'coach' : 'general'
+      
+      // 1. Instantly show cached messages if we have them (flawless UI switch)
+      if (historyCache.current[mode] !== null) {
+        setMessages(historyCache.current[mode]!)
+      } else {
+        // Or clear instantly to prevent the OTHER mode's messages from showing
+        setMessages([])
+      }
+
+      // 2. Fetch fresh from DB in background
       const history = await getChatHistory(mode)
       if (history && history.length > 0) {
-        setMessages(history.map(msg => ({
+        const formatted = history.map(msg => ({
           id: msg.id,
           role: msg.role === 'assistant' ? 'ai' : 'user',
           content: msg.content,
-        })))
+        })) as Message[]
+        
+        setMessages(formatted)
+        historyCache.current[mode] = formatted
       } else {
-        setMessages([])
+        if (historyCache.current[mode] === null) setMessages([])
+        historyCache.current[mode] = []
       }
     }
     loadHistory()
-  }, [coachMode])  // re-load whenever mode switches
+  }, [coachMode])
+
+  // Keep cache up to date when user sends/receives new messages
+  useEffect(() => {
+    const mode = coachMode ? 'coach' : 'general'
+    historyCache.current[mode] = messages
+  }, [messages, coachMode])
 
   function handleInputChange(val: string) {
     setInput(val)
