@@ -27,8 +27,13 @@ Start your day right. An AI-generated summary of your day—covering your workou
 A floating chat assistant that knows your schedule (but never your private Vault).
 Use hotkeys like `/workout`, `/tasks`, `/motivate`, `/week`, or `/dailybrief` for instant contextual insights and guidance.
 
-### 🏋️ Fitness Tracker & AI Quick Set
-Plan your weekly workout routine (Push, Pull, Legs, etc.) and track individual exercises, sets, and reps. Use **AI Quick Set** to parse natural language (e.g., *"Monday is push day with bench press 4x8"*) into structured plans. Includes dedicated **Diet** and **Sleep** tracking tabs with AI-powered health insights and icon-based navigation.
+### 🏋️ Coach Mode & Workout Assistant
+A highly specialized, data-grounded Fitness Coach mode that toggles the entire Chat UI into a premium purple theme with a dumbbell interface. 
+*   **Wger Exercise API Grounding:** Retrieves verified, non-hallucinated step-by-step form instructions, target muscles, and execution cues.
+*   **Persistent User Profiles:** Stores height, weight, sex, fitness level, goals, and available equipment. The Coach automatically loads this context first for fully personalized workouts without repetition.
+*   **Progressive Overload Tracking:** Saves sets, reps, weight used, and RPE for exercises. The Coach compares new logs to previous history to suggest optimal progression targets.
+*   **Holistic Multi-Tool Reviews:** Evaluates training schedule, calorie/protein intake (diet), and sleep/recovery quality together to deliver unified, actionable coaching verdicts.
+*   **DB-Backed Chat History & `/clear`:** Stores full persistent conversation histories per user. The `/clear` command completely wipes both the UI and database logs.
 
 ### 🎓 Academics Hub
 Manage university assignments, exams, and projects. Add tasks with natural language using **AI Quick Add**. Stay ahead of deadlines with clean, urgency-sorted task cards. Tap any task to open a full **detail view** (bottom sheet) showing notes and due time, with the ability to delete tasks inline. Relative times show hour-level precision (e.g., `In 5h`, `In 1d 3h`).
@@ -57,7 +62,7 @@ Update your display name, upload a profile avatar (stored in Supabase Storage), 
 * **Library**: [React 19](https://react.dev/)
 * **Language**: [TypeScript](https://www.typescriptlang.org/)
 * **Database & Auth**: [Supabase](https://supabase.com/) (PostgreSQL, RLS)
-* **AI Engine**: [Groq](https://groq.com/) using `llama-3.1-8b-instant`
+* **AI Engine**: [Groq](https://groq.com/) using `llama-3.1-8b-instant` with raised 2048 token capability
 * **Animations**: [Framer Motion](https://www.framer.com/motion/)
 * **Icons**: [Lucide React](https://lucide.dev/)
 * **Styling**: Inline styles + minimal Tailwind CSS
@@ -89,6 +94,9 @@ Run the following SQL files in your Supabase SQL Editor in order:
 - `schema_profiles.sql` — User profiles & avatar logic
 - `schema_health.sql` — Diet and sleep tracking tables
 - `schema_notes.sql` — Learning notes table
+- `migration_chat_history.sql` — Persistent chat messages & clear triggers
+- `migration_fitness_profile.sql` — User fitness profiles & progressive overload workout logs
+
 
 ### 4. Start the Application
 ```bash

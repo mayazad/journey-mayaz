@@ -57,10 +57,22 @@ export default async function HomePage() {
   const workoutPlans = workoutPlansResult.data || []
   
   // Build a highly rich serialized RAG context snapshot with the full weekly schedule
+  // IMPORTANT: resolve todayName using the timezone cookie, NOT new Date().getDay() which is UTC on Vercel
   const DAYS = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday']
-  const todayName = DAYS[now.getDay()]
+  let todayName = DAYS[now.getDay()] // UTC fallback
+  try {
+    const dayFormatter = new Intl.DateTimeFormat('en-US', { timeZone: userTz, weekday: 'long' })
+    todayName = dayFormatter.format(now)
+  } catch (e) {
+    console.error('Day name timezone resolution failed:', e)
+  }
+
+  // Pre-compute tomorrow's name so the AI never has to infer it
+  const tomorrowName = DAYS[(DAYS.indexOf(todayName) + 1) % 7] ||
+    (() => { try { const d = new Date(now); d.setDate(d.getDate() + 1); return new Intl.DateTimeFormat('en-US', { timeZone: userTz, weekday: 'long' }).format(d) } catch { return DAYS[(now.getDay() + 1) % 7] } })()
 
   const todayPlan = workoutPlans.find(wp => wp.day_of_week === todayName) || null
+  const tomorrowPlan = workoutPlans.find(wp => wp.day_of_week === tomorrowName) || null
   const roadmaps = roadmapsResult.data || []
 
   const urgentTasks = tasks.filter((t) => {
@@ -68,14 +80,15 @@ export default async function HomePage() {
     return diff > 0 && diff < 7 * 24 * 60 * 60 * 1000
   }).slice(0, 4)
 
-  const workoutSection = workoutPlans.length
-    ? `Weekly Workout Schedule:\n  ${workoutPlans.map(wp => {
-        const exercisesStr = Array.isArray(wp.exercises) && wp.exercises.length > 0
-          ? wp.exercises.map((e: any) => e.sets && e.reps ? `* ${e.name} (${e.sets}x${e.reps})` : `* ${e.name}`).join(', ')
-          : 'No exercises listed yet'
-        return `${wp.day_of_week}: ${wp.day_type} day (Muscles: ${(wp.target_muscle_groups ?? []).join(', ') || 'None'}) — Exercises: [${exercisesStr}]`
-      }).join('\n  ')}`
-    : 'Weekly Workout Schedule: No plans set yet.'
+  function formatWorkoutDay(wp: typeof workoutPlans[0] | null, dayLabel: string): string {
+    if (!wp) return `${dayLabel}: No workout plan set.`
+    const exercisesStr = Array.isArray(wp.exercises) && wp.exercises.length > 0
+      ? wp.exercises.map((e: any) => e.sets && e.reps ? `${e.name} (${e.sets}x${e.reps})` : e.name).join(', ')
+      : 'No exercises listed yet'
+    return `${dayLabel} (${wp.day_type} day, Muscles: ${(wp.target_muscle_groups ?? []).join(', ') || 'None'}): ${exercisesStr}`
+  }
+
+  const workoutSection = `Today (${todayName}): ${formatWorkoutDay(todayPlan, todayName)}\nTomorrow (${tomorrowName}): ${formatWorkoutDay(tomorrowPlan, tomorrowName)}`
 
   const tasksSection = tasks.length
     ? `Upcoming Academic Tasks:\n  ${tasks.map(t => `* [${t.type.toUpperCase()}] "${t.title}" (Due: ${new Date(t.due_date).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}, Status: ${t.status})`).join('\n  ')}`
@@ -85,7 +98,7 @@ export default async function HomePage() {
     ? `Active Learning Roadmaps: ${roadmaps.map(r => `"${r.title}"`).join(', ')}`
     : 'Active Learning Roadmaps: None'
 
-  const contextSnapshot = `Today's Local Date: ${dateLabel}\nToday's Day of Week: ${todayName}\nTimezone: ${userTz}\n\n${workoutSection}\n\n${tasksSection}\n\n${learningSection}`
+  const contextSnapshot = `Today's Local Date: ${dateLabel}\nToday's Day of Week: ${todayName}\nTomorrow's Day of Week: ${tomorrowName}\nTimezone: ${userTz}\n\n${workoutSection}\n\n${tasksSection}\n\n${learningSection}`
 
   return (
     <AppShell>

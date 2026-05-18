@@ -4,6 +4,7 @@ import Groq from 'groq-sdk'
 import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import { createRoadmap, bulkInsertNodes } from './learning'
+import { MAYAZ_OS_TOOLS, dispatchTool } from './tools'
 
 // ── Groq key resolver — admin uses env key, others use their stored key ─────
 async function resolveGroqKey(): Promise<{ groq: Groq; isAdmin: boolean } | null> {
@@ -281,14 +282,79 @@ Rules:
 }
 
 // ════════════════════════════════════════════════════════════════════════════════
-// HOME AI CHAT
-// Context-aware chat for the home floating panel.
-// Uses the same data snapshot as the briefing but never accesses Vault.
+// CHAT HISTORY PERSISTENCE
+// ════════════════════════════════════════════════════════════════════════════════
+export async function getChatHistory() {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return []
+
+  const { data, error } = await supabase
+    .from('chat_messages')
+    .select('id, role, content, created_at')
+    .eq('user_id', user.id)
+    .order('created_at', { ascending: true })
+    .limit(50)
+
+  if (error) {
+    console.error('Failed to get chat history:', error)
+    return []
+  }
+
+  return data.map(msg => ({
+    id: msg.id,
+    role: msg.role as 'user' | 'assistant',
+    content: msg.content,
+  }))
+}
+
+export async function saveChatMessage(role: 'user' | 'assistant', content: string) {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return null
+
+  const { data, error } = await supabase
+    .from('chat_messages')
+    .insert({
+      user_id: user.id,
+      role,
+      content,
+    })
+    .select('id')
+    .single()
+
+  if (error) {
+    console.error('Failed to save chat message:', error)
+    return null
+  }
+
+  return data.id
+}
+
+export async function clearChatHistory() {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return
+
+  await supabase
+    .from('chat_messages')
+    .delete()
+    .eq('user_id', user.id)
+}
+
+// ════════════════════════════════════════════════════════════════════════════════
+// HOME AI CHAT — Agentic Tool-Calling RAG
+// Round 1: AI picks which tool(s) to call based on the user's question.
+// Round 2: AI receives fresh DB results and produces a fully grounded answer.
+// Vault is structurally absent — no tool exists to access it.
 // ════════════════════════════════════════════════════════════════════════════════
 export async function chatWithAI(
   message: string,
   contextSnapshot: string,
-  clientTime?: string
+  clientTime?: string,
+  clientDateISO?: string,  // YYYY-MM-DD from browser — used by nutrition/sleep tools
+  chatHistory?: { role: 'user' | 'assistant'; content: string }[],  // prior conversation turns
+  coachMode?: boolean   // true = full fitness coaching rules active
 ): Promise<{ reply: string } | { error: string }> {
   const resolved = await resolveGroqKey()
   if (!resolved) return { error: 'Please add your Groq API key in Settings to use AI chat.' }
@@ -306,33 +372,125 @@ export async function chatWithAI(
     firstName = nameParts[nameParts.length - 1]
   }
 
+  const systemContent = `You are the personal AI inside Mayaz OS, speaking directly to ${firstName}. You are both a general assistant AND a professional fitness coach.
+
+You have access to live tools that query ${firstName}'s real database. Always prefer calling a tool over guessing.
+
+== GENERAL RULES ==
+1. CHIT-CHAT IS ALLOWED: For casual messages ("hi", "what's up", general questions), reply naturally and conversationally. Do NOT force data or call tools.
+2. For questions about workouts, tasks, nutrition, sleep, or learning — call the appropriate tool. Never guess or invent data.
+3. If a tool returns no data, say clearly there is nothing recorded — never make something up.
+4. Do NOT access or mention Vault/password data. It does not exist in your toolset.
+5. Be specific with numbers from tool results (e.g. "You logged 1,850 calories").
+6. RESPONSE LENGTH: Match the length to the complexity of the question. Simple questions get short answers. Detailed questions (exercise form, workout plans, plan reviews) get full structured responses. Maximum 600 words for general replies, up to full detail for fitness coaching.
+${clientTime ? `\nUser's current local date and time: ${clientTime}` : ''}
+${clientDateISO ? `User's current local date (YYYY-MM-DD): ${clientDateISO}` : ''}
+
+${coachMode ? `== COACH MODE — ACTIVE ==
+You are now acting as a professional fitness coach. The user has explicitly enabled this mode.
+
+STEP 0 — ALWAYS DO THIS FIRST: Call get_user_profile() before responding to ANY fitness question. Use the profile to personalize every answer. If no profile exists, ask the user 1-2 clarifying questions and then call save_user_profile() to save their answers.
+
+A. EXERCISE FORM QUESTIONS — When the user asks how to do an exercise:
+   1. Call get_exercise_info() AND get_progressive_overload() in the same round.
+   2. Structure your response EXACTLY as:
+      MUSCLES TARGETED: (list primary, then secondary)
+      STEP-BY-STEP FORM: (numbered, one action per step)
+      WHERE YOU SHOULD FEEL IT: (specific body-part sensation cues so they self-verify)
+      COMMON MISTAKES TO AVOID: (3–4 specific errors)
+      YOUR HISTORY: (if they have past logs, show last 3 sessions + suggest today's target weight)
+      YOUR PLAN: (if this exercise is in their DB schedule, show the sets/reps)
+
+B. GOAL-BASED PLANNING — When the user mentions any fitness goal:
+   1. Call get_user_profile() first. Use it to tailor the plan precisely.
+   2. Different goals need different approaches:
+      - Fat loss → moderate deficit, compound lifts, preserve muscle, avoid excessive cardio
+      - Muscle building → progressive overload, slight surplus, compound + isolation
+      - Strength → low reps, heavy weight, long rest, powerlifting movements
+      - Posture / mobility → posterior chain work, stretching, corrective exercises
+      - Skinny fat recomposition → build muscle first at maintenance calories, then cut
+      - Endurance → cardio periodisation, zone 2 training, lighter weights high reps
+   3. Ask ONE clarifying question only if critical info is missing (equipment, days/week).
+   4. Generate a full structured weekly plan with warmup, exercises, sets/reps, rest days.
+   5. After presenting, ask: "Want me to save this to your schedule?"
+   6. Only call save_workout_plan() if the user explicitly confirms.
+
+C. PLAN EVALUATION & HOLISTIC REVIEW — When asked to review their plan or check recovery:
+   1. Call ALL three tools: get_workout_schedule('All'), get_nutrition_summary(date), get_sleep_log(date).
+   2. Also call get_user_profile() to check if the plan matches their stated goal.
+   3. Structure: Training | Nutrition | Recovery | Profile Match | Overall Verdict
+   4. Be specific — name exact exercises to swap, exact protein targets, exact sleep hours.
+
+D. LOGGING — When the user says they completed a set (e.g. "done", "just did", "finished"):
+   1. Ask for weight and RPE if not provided.
+   2. Call log_workout_set() only after confirmation.
+   3. Immediately compare to their last session: "Last time you did 60kg. You just hit 62.5kg — that's progress."
+
+E. PROFILE UPDATES — When the user shares any new personal info (weight, goal change, new injury):
+   1. Silently call save_user_profile() with only the changed fields.
+   2. Acknowledge the update briefly.` : ''}
+
+Context (pre-loaded snapshot for general awareness):
+${contextSnapshot}`
+
+
+  const userMessage = { role: 'user' as const, content: message }
+  const systemMessage = { role: 'system' as const, content: systemContent }
+
+  // Keep only the last 10 turns (5 user + 5 assistant) to stay within token budget
+  const recentHistory = (chatHistory ?? []).slice(-10)
+
   try {
-    const completion = await resolved.groq.chat.completions.create({
+    // ── Round 1: Let the AI decide which tool(s) it needs ─────────────────────
+    const round1 = await resolved.groq.chat.completions.create({
       model: 'llama-3.1-8b-instant',
-      messages: [
-        {
-          role: 'system',
-          content: `You are the personal AI inside Mayaz OS. You are chatting directly with ${firstName}. Be concise, direct, and personal.
-You have access to their daily context below containing workouts, tasks, and learning roadmaps.
-
-CRITICAL RAG GROUNDING RULES:
-1. ONLY answer questions about the user's schedule, tasks, workouts, or plans using the provided context snapshot.
-2. If the context snapshot shows nothing (e.g. "None", "No plan set"), or does not contain the answer, you must state that they have nothing scheduled.
-3. NEVER invent, hallucinate, or make up any meetings, tasks, workouts, or plans (e.g., do NOT make up corporate team meetings, marketing reviews, sales report deadlines, etc.) under any circumstances. If the information is not in the context, clearly say you do not see anything scheduled.
-4. Do not access or mention Vault/password data. No emojis. Under 150 words per reply.
-
-${clientTime ? `User's Current Date & Time: ${clientTime}` : ''}
-
-Context:
-${contextSnapshot}`,
-        },
-        { role: 'user', content: message },
-      ],
-      max_tokens: 350,
-      temperature: 0.5,
+      tools: MAYAZ_OS_TOOLS as unknown as Parameters<typeof resolved.groq.chat.completions.create>[0]['tools'],
+      tool_choice: 'auto',
+      messages: [systemMessage, ...recentHistory, userMessage],
+      max_tokens: 2048,
+      temperature: 0.3,
     })
-    const reply = completion.choices[0]?.message?.content ?? 'Sorry, I couldn\'t generate a response.'
+
+    const choice = round1.choices[0]
+
+    // ── Tool calls requested — execute them and feed results back ─────────────
+    if (choice.finish_reason === 'tool_calls' && choice.message.tool_calls?.length) {
+      const toolResultMessages: { role: 'tool'; tool_call_id: string; content: string }[] = []
+
+      for (const tc of choice.message.tool_calls) {
+        let args: Record<string, unknown> = {}
+        try { args = JSON.parse(tc.function.arguments) } catch { /* use empty */ }
+
+        const toolResult = await dispatchTool(tc.function.name, args)
+        toolResultMessages.push({
+          role: 'tool',
+          tool_call_id: tc.id,
+          content: JSON.stringify(toolResult),
+        })
+      }
+
+      // ── Round 2: Give AI the real DB data → produce grounded final reply ────
+      const round2 = await resolved.groq.chat.completions.create({
+        model: 'llama-3.1-8b-instant',
+        messages: [
+          systemMessage,
+          ...recentHistory,
+          userMessage,
+          choice.message,
+          ...toolResultMessages,
+        ],
+        max_tokens: 2048,
+        temperature: 0.4,
+      })
+
+      const reply = round2.choices[0]?.message?.content ?? "Sorry, I couldn't generate a response."
+      return { reply }
+    }
+
+    // ── No tool needed — direct conversational answer ─────────────────────────
+    const reply = choice.message.content ?? "Sorry, I couldn't generate a response."
     return { reply }
+
   } catch (err) {
     console.error('chatWithAI error:', err)
     return { error: 'Failed to get a response. Try again.' }
