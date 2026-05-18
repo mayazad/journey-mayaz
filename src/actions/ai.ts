@@ -501,7 +501,7 @@ ${contextSnapshot}`
         tools: MAYAZ_OS_TOOLS as unknown as Parameters<Groq['chat']['completions']['create']>[0]['tools'],
         tool_choice: 'auto',
         messages,
-        max_tokens: 2048,
+        max_tokens: 1000, // Reduced from 2048 to keep total (prompt + max_tokens) under Groq's 6000 TPM limit
         temperature: 0.3,
         stream: false,  // keep false in all rounds — streaming breaks tool JSON parsing
       })
