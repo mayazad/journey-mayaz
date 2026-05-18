@@ -20,9 +20,17 @@ async function resolveGroqKey(): Promise<{ groq: Groq; isAdmin: boolean } | null
       .single()
 
     if (profile?.is_admin) {
-      const envKey = process.env.GROQ_API_KEY
-      if (!envKey || envKey === 'your-groq-api-key-here') return null
-      return { groq: new Groq({ apiKey: envKey }), isAdmin: true }
+      const envKeyString = process.env.GROQ_API_KEY
+      if (!envKeyString || envKeyString === 'your-groq-api-key-here') return null
+      
+      // Support multiple API keys separated by commas to load-balance Groq limits
+      const keys = envKeyString.split(',').map(k => k.trim()).filter(Boolean)
+      if (keys.length === 0) return null
+      
+      // Pick a random key from the pool
+      const randomKey = keys[Math.floor(Math.random() * keys.length)]
+      
+      return { groq: new Groq({ apiKey: randomKey }), isAdmin: true }
     }
 
     if (profile?.groq_api_key) {
