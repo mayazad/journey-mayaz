@@ -53,20 +53,23 @@ export function HomeChatPanel({ contextSnapshot }: HomeChatPanelProps) {
     if (open) setTimeout(() => inputRef.current?.focus(), 300)
   }, [open])
 
-  // Load chat history from DB on mount
+  // Load chat history from DB on mount — filtered by current mode
   useEffect(() => {
     async function loadHistory() {
-      const history = await getChatHistory()
+      const mode = coachMode ? 'coach' : 'general'
+      const history = await getChatHistory(mode)
       if (history && history.length > 0) {
         setMessages(history.map(msg => ({
           id: msg.id,
           role: msg.role === 'assistant' ? 'ai' : 'user',
           content: msg.content,
         })))
+      } else {
+        setMessages([])
       }
     }
     loadHistory()
-  }, [])
+  }, [coachMode])  // re-load whenever mode switches
 
   function handleInputChange(val: string) {
     setInput(val)
@@ -99,8 +102,9 @@ export function HomeChatPanel({ contextSnapshot }: HomeChatPanelProps) {
     setMessages([])
     setInput('')
     setShowHotkeys(false)
-    // Also wipe from DB so history doesn't reload on next open
-    clearChatHistory()
+    // Only clear the current mode's history in DB
+    const mode = coachMode ? 'coach' : 'general'
+    clearChatHistory(mode)
   }
 
   function sendMessage(text: string) {
@@ -113,8 +117,9 @@ export function HomeChatPanel({ contextSnapshot }: HomeChatPanelProps) {
       return
     }
 
-    // Save to DB in background
-    saveChatMessage('user', trimmed)
+    // Save to DB in background — keyed to current mode
+    const mode = coachMode ? 'coach' : 'general'
+    saveChatMessage('user', trimmed, mode)
     addMessage({ role: 'user', content: trimmed })
 
     setInput('')
@@ -138,10 +143,10 @@ export function HomeChatPanel({ contextSnapshot }: HomeChatPanelProps) {
 
       const result = await chatWithAI(trimmed, contextSnapshot, clientTime, clientDateISO, chatHistory, coachMode)
       if ('reply' in result) {
-        saveChatMessage('assistant', result.reply)
+        saveChatMessage('assistant', result.reply, mode)
         addMessage({ role: 'ai', content: result.reply })
       } else {
-        addMessage({ role: 'ai', content: `Error: ${result.error}` })
+        addMessage({ role: 'ai', content: `❌ ${result.error}` })
       }
     })
   }
@@ -315,18 +320,23 @@ export function HomeChatPanel({ contextSnapshot }: HomeChatPanelProps) {
                       lineHeight: 1.6,
                       color: msg.role === 'user' ? '#fff' : 'var(--text-primary)',
                     }}>
-                      {msg.isMarkdown ? (
+                      {msg.role === 'user' ? (
+                        msg.content
+                      ) : (
                         <ReactMarkdown
                           components={{
+                            h1: ({ children }) => <p style={{ fontWeight: 800, fontSize: '15px', marginBottom: '4px', marginTop: '10px' }}>{children}</p>,
                             h2: ({ children }) => <p style={{ fontWeight: 700, fontSize: '14px', marginBottom: '4px', marginTop: '10px' }}>{children}</p>,
+                            h3: ({ children }) => <p style={{ fontWeight: 700, fontSize: '13.5px', marginBottom: '4px', marginTop: '8px' }}>{children}</p>,
                             p:  ({ children }) => <p style={{ marginBottom: '6px' }}>{children}</p>,
                             ul: ({ children }) => <ul style={{ paddingLeft: '16px', marginBottom: '6px' }}>{children}</ul>,
+                            ol: ({ children }) => <ol style={{ paddingLeft: '16px', marginBottom: '6px' }}>{children}</ol>,
                             li: ({ children }) => <li style={{ marginBottom: '3px' }}>{children}</li>,
                             strong: ({ children }) => <strong style={{ fontWeight: 700 }}>{children}</strong>,
+                            em: ({ children }) => <em style={{ fontStyle: 'italic' }}>{children}</em>,
+                            code: ({ children }) => <code style={{ background: '#e5e7eb', padding: '1px 5px', borderRadius: '4px', fontSize: '12px', fontFamily: 'monospace' }}>{children}</code>,
                           }}
                         >{msg.content}</ReactMarkdown>
-                      ) : (
-                        msg.content
                       )}
                     </div>
                   </div>

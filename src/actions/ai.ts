@@ -284,7 +284,7 @@ Rules:
 // ════════════════════════════════════════════════════════════════════════════════
 // CHAT HISTORY PERSISTENCE
 // ════════════════════════════════════════════════════════════════════════════════
-export async function getChatHistory() {
+export async function getChatHistory(mode: 'general' | 'coach' = 'general') {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return []
@@ -293,8 +293,9 @@ export async function getChatHistory() {
     .from('chat_messages')
     .select('id, role, content, created_at')
     .eq('user_id', user.id)
+    .eq('mode', mode)
     .order('created_at', { ascending: true })
-    .limit(50)
+    .limit(30)
 
   if (error) {
     console.error('Failed to get chat history:', error)
@@ -308,7 +309,7 @@ export async function getChatHistory() {
   }))
 }
 
-export async function saveChatMessage(role: 'user' | 'assistant', content: string) {
+export async function saveChatMessage(role: 'user' | 'assistant', content: string, mode: 'general' | 'coach' = 'general') {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return null
@@ -319,6 +320,7 @@ export async function saveChatMessage(role: 'user' | 'assistant', content: strin
       user_id: user.id,
       role,
       content,
+      mode,
     })
     .select('id')
     .single()
@@ -331,15 +333,17 @@ export async function saveChatMessage(role: 'user' | 'assistant', content: strin
   return data.id
 }
 
-export async function clearChatHistory() {
+export async function clearChatHistory(mode?: 'general' | 'coach') {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return
 
-  await supabase
-    .from('chat_messages')
-    .delete()
-    .eq('user_id', user.id)
+  const query = supabase.from('chat_messages').delete().eq('user_id', user.id)
+  if (mode) {
+    await query.eq('mode', mode)
+  } else {
+    await query
+  }
 }
 
 // ════════════════════════════════════════════════════════════════════════════════
@@ -441,8 +445,8 @@ ${contextSnapshot}`
   const userMessage = { role: 'user' as const, content: message }
   const systemMessage = { role: 'system' as const, content: systemContent }
 
-  // Keep only the last 10 turns (5 user + 5 assistant) to stay within token budget
-  const recentHistory = (chatHistory ?? []).slice(-10)
+  // Keep only the last 6 turns (3 user + 3 assistant) to stay within Vercel 10s timeout and Groq TPM limits
+  const recentHistory = (chatHistory ?? []).slice(-6)
 
   try {
     let messages: any[] = [
