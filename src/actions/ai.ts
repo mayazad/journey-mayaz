@@ -7,7 +7,32 @@ import { createRoadmap, bulkInsertNodes } from './learning'
 import { MAYAZ_OS_TOOLS, dispatchTool } from './tools'
 
 // ── Groq key resolver — admin uses env key, others use their stored key ─────
-async function resolveGroqKey(): Promise<{ groq: Groq; isAdmin: boolean } | null> {
+// Helper to execute groq request with automatic retry on 429 rate limits
+async function executeGroqWithRetry(
+  resolved: { groqClients: Groq[]; isAdmin: boolean },
+  params: Parameters<Groq['chat']['completions']['create']>[0]
+): Promise<any> {
+  let lastError: any;
+  // Shuffle clients for load balancing
+  const clients = [...resolved.groqClients].sort(() => Math.random() - 0.5);
+  for (const groq of clients) {
+    try {
+      return await groq.chat.completions.create(params);
+    } catch (err: any) {
+      lastError = err;
+      // If rate limited (429) and we have more keys, try the next one
+      if (err?.status === 429 || err?.message?.includes('429')) {
+        console.log('Groq 429 Rate Limit hit. Switching to another API key...');
+        continue;
+      }
+      throw err; // Other errors (like 400 Bad Request) throw immediately
+    }
+  }
+  throw lastError;
+}
+
+// ── Groq key resolver — admin uses env key, others use their stored key ─────
+async function resolveGroqKey(): Promise<{ groqClients: Groq[]; isAdmin: boolean } | null> {
   try {
     const supabase = await createClient()
     const { data: { user } } = await supabase.auth.getUser()
@@ -30,11 +55,11 @@ async function resolveGroqKey(): Promise<{ groq: Groq; isAdmin: boolean } | null
       // Pick a random key from the pool
       const randomKey = keys[Math.floor(Math.random() * keys.length)]
       
-      return { groq: new Groq({ apiKey: randomKey }), isAdmin: true }
+      return { groqClients: keys.map(k => new Groq({ apiKey: k })), isAdmin: true }
     }
 
     if (profile?.groq_api_key) {
-      return { groq: new Groq({ apiKey: profile.groq_api_key }), isAdmin: false }
+      return { groqClients: [new Groq({ apiKey: profile.groq_api_key })], isAdmin: false }
     }
 
     return null // user hasn't set their key yet
@@ -249,7 +274,7 @@ export async function generateDailyBriefing(
 
   let markdown: string
   try {
-    const completion = await resolved.groq.chat.completions.create({
+    const completion = await executeGroqWithRetry(resolved, {
       model: 'llama-3.1-8b-instant',
       messages: [
         {
@@ -471,9 +496,9 @@ ${contextSnapshot}`
       // Final answer round: use streaming to keep Vercel connection alive on long responses
       const isToolRound = rounds < maxRounds - 1
 
-      const response = await resolved.groq.chat.completions.create({
+      const response = await executeGroqWithRetry(resolved, {
         model: 'llama-3.1-8b-instant',
-        tools: MAYAZ_OS_TOOLS as unknown as Parameters<typeof resolved.groq.chat.completions.create>[0]['tools'],
+        tools: MAYAZ_OS_TOOLS as unknown as Parameters<Groq['chat']['completions']['create']>[0]['tools'],
         tool_choice: 'auto',
         messages,
         max_tokens: 2048,
@@ -552,7 +577,7 @@ export async function parseRoadmapFromText(
   let nodes: { title: string; description?: string; order_index: number; parent_ids?: string[] }[]
 
   try {
-    const completion = await resolved.groq.chat.completions.create({
+    const completion = await executeGroqWithRetry(resolved, {
       model: 'llama-3.1-8b-instant',
       messages: [
         {
@@ -621,7 +646,7 @@ export async function appendNodesToRoadmap(
   let nodes: { title: string; description?: string; order_index: number }[]
 
   try {
-    const completion = await resolved.groq.chat.completions.create({
+    const completion = await executeGroqWithRetry(resolved, {
       model: 'llama-3.1-8b-instant',
       messages: [
         {
@@ -680,7 +705,7 @@ export async function previewTask(
   let parsed: { title?: string; type?: string; due_date?: string; notes?: string }
 
   try {
-    const completion = await resolved.groq.chat.completions.create({
+    const completion = await executeGroqWithRetry(resolved, {
       model: 'llama-3.1-8b-instant',
       messages: [
         {
@@ -726,7 +751,7 @@ export async function aiAddTask(
   let parsed: { title?: string; type?: string; due_date?: string; notes?: string }
 
   try {
-    const completion = await resolved.groq.chat.completions.create({
+    const completion = await executeGroqWithRetry(resolved, {
       model: 'llama-3.1-8b-instant',
       messages: [
         {
@@ -781,7 +806,7 @@ export async function previewWorkoutPlan(
   let parsed: { day_of_week?: string; day_type?: string; target_muscle_groups?: string[]; exercises?: string[] }
 
   try {
-    const completion = await resolved.groq.chat.completions.create({
+    const completion = await executeGroqWithRetry(resolved, {
       model: 'llama-3.1-8b-instant',
       messages: [
         {
@@ -882,7 +907,7 @@ export async function aiSetDayPlan(
   const inferredDay = dayMatch ? dayMatch[1].charAt(0).toUpperCase() + dayMatch[1].slice(1).toLowerCase() : todayName
 
   try {
-    const completion = await resolved.groq.chat.completions.create({
+    const completion = await executeGroqWithRetry(resolved, {
       model: 'llama-3.1-8b-instant',
       messages: [
         {
