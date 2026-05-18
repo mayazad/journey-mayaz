@@ -459,6 +459,10 @@ ${contextSnapshot}`
     const maxRounds = 4
 
     while (rounds < maxRounds) {
+      // Tool-calling rounds: no streaming (we need complete JSON for tool args)
+      // Final answer round: use streaming to keep Vercel connection alive on long responses
+      const isToolRound = rounds < maxRounds - 1
+
       const response = await resolved.groq.chat.completions.create({
         model: 'llama-3.1-8b-instant',
         tools: MAYAZ_OS_TOOLS as unknown as Parameters<typeof resolved.groq.chat.completions.create>[0]['tools'],
@@ -466,6 +470,7 @@ ${contextSnapshot}`
         messages,
         max_tokens: 2048,
         temperature: 0.3,
+        stream: false,  // keep false in all rounds — streaming breaks tool JSON parsing
       })
 
       const choice = response.choices[0]
@@ -480,7 +485,20 @@ ${contextSnapshot}`
           let args: Record<string, unknown> = {}
           try { args = JSON.parse(tc.function.arguments) } catch { /* use empty */ }
 
-          const toolResult = await dispatchTool(tc.function.name, args)
+          // ── Wrap each individual tool call in its own try/catch ──────────────
+          // This prevents one failing external API (e.g. wger.de) from crashing
+          // the entire chat session. The AI will receive an error description
+          // as the tool result and can continue coaching from its own knowledge.
+          let toolResult: unknown
+          try {
+            toolResult = await dispatchTool(tc.function.name, args)
+          } catch (toolErr) {
+            console.error(`Tool dispatch error [${tc.function.name}]:`, toolErr)
+            toolResult = {
+              result: `Tool "${tc.function.name}" is temporarily unavailable. Please answer from your own knowledge and coaching expertise.`
+            }
+          }
+
           messages.push({
             role: 'tool',
             tool_call_id: tc.id,
