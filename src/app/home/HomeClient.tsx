@@ -279,9 +279,13 @@ export function HomeClient({
                           fontSize: '10px', fontWeight: 700, color: 'var(--em-700)',
                         }}>{i + 1}</span>
                         <span style={{ flex: 1, fontSize: '13px', color: 'var(--text-primary)', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{ex.name}</span>
-                        {ex.sets && ex.reps && (
+                        {(ex.sets || ex.reps) && (
                           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '1px', flexShrink: 0 }}>
-                            <span style={{ fontSize: '11px', fontFamily: 'monospace', color: 'var(--text-muted)', fontWeight: 600 }}>{ex.sets}×{ex.reps}</span>
+                            {ex.sets && ex.reps ? (
+                              <span style={{ fontSize: '11px', fontFamily: 'monospace', color: 'var(--text-muted)', fontWeight: 600 }}>{ex.sets}×{ex.reps}</span>
+                            ) : ex.reps ? (
+                              <span style={{ fontSize: '11px', fontFamily: 'monospace', color: 'var(--text-muted)', fontWeight: 600 }}>{ex.reps}</span>
+                            ) : null}
                             {ex.rest && (
                               <span style={{ fontSize: '9px', color: '#f59e0b', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '2px' }}>⏱️ {ex.rest}</span>
                             )}
@@ -465,13 +469,21 @@ function WorkoutSheet({ plan, onClose }: { plan: DayPlan; onClose: () => void })
                   fontSize: '11px', fontWeight: 700, color: 'var(--em-700)',
                 }}>{i + 1}</span>
                 <span style={{ flex: 1, fontSize: '14px', color: 'var(--text-primary)', fontWeight: 600 }}>{ex.name}</span>
-                {ex.sets && ex.reps && (
+                {(ex.sets || ex.reps) && (
                   <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '2px', flexShrink: 0 }}>
-                    <span style={{
-                      fontSize: '12px', fontFamily: 'monospace', fontWeight: 700,
-                      padding: '3px 8px', borderRadius: '8px',
-                      background: 'var(--bg-surface2)', color: 'var(--text-secondary)',
-                    }}>{ex.sets}×{ex.reps}</span>
+                    {ex.sets && ex.reps ? (
+                      <span style={{
+                        fontSize: '12px', fontFamily: 'monospace', fontWeight: 700,
+                        padding: '3px 8px', borderRadius: '8px',
+                        background: 'var(--bg-surface2)', color: 'var(--text-secondary)',
+                      }}>{ex.sets}×{ex.reps}</span>
+                    ) : ex.reps ? (
+                      <span style={{
+                        fontSize: '12px', fontFamily: 'monospace', fontWeight: 700,
+                        padding: '3px 8px', borderRadius: '8px',
+                        background: 'var(--bg-surface2)', color: 'var(--text-secondary)',
+                      }}>{ex.reps}</span>
+                    ) : null}
                     {ex.rest && (
                       <span style={{ fontSize: '10px', color: '#f59e0b', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '2px' }}>
                         ⏱️ {ex.rest}
