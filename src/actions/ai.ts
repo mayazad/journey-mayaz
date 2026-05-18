@@ -445,54 +445,55 @@ ${contextSnapshot}`
   const recentHistory = (chatHistory ?? []).slice(-10)
 
   try {
-    // ── Round 1: Let the AI decide which tool(s) it needs ─────────────────────
-    const round1 = await resolved.groq.chat.completions.create({
-      model: 'llama-3.1-8b-instant',
-      tools: MAYAZ_OS_TOOLS as unknown as Parameters<typeof resolved.groq.chat.completions.create>[0]['tools'],
-      tool_choice: 'auto',
-      messages: [systemMessage, ...recentHistory, userMessage],
-      max_tokens: 2048,
-      temperature: 0.3,
-    })
+    let messages: any[] = [
+      systemMessage,
+      ...recentHistory,
+      userMessage,
+    ]
 
-    const choice = round1.choices[0]
+    let rounds = 0
+    const maxRounds = 4
 
-    // ── Tool calls requested — execute them and feed results back ─────────────
-    if (choice.finish_reason === 'tool_calls' && choice.message.tool_calls?.length) {
-      const toolResultMessages: { role: 'tool'; tool_call_id: string; content: string }[] = []
-
-      for (const tc of choice.message.tool_calls) {
-        let args: Record<string, unknown> = {}
-        try { args = JSON.parse(tc.function.arguments) } catch { /* use empty */ }
-
-        const toolResult = await dispatchTool(tc.function.name, args)
-        toolResultMessages.push({
-          role: 'tool',
-          tool_call_id: tc.id,
-          content: JSON.stringify(toolResult),
-        })
-      }
-
-      // ── Round 2: Give AI the real DB data → produce grounded final reply ────
-      const round2 = await resolved.groq.chat.completions.create({
+    while (rounds < maxRounds) {
+      const response = await resolved.groq.chat.completions.create({
         model: 'llama-3.1-8b-instant',
-        messages: [
-          systemMessage,
-          ...recentHistory,
-          userMessage,
-          choice.message,
-          ...toolResultMessages,
-        ],
+        tools: MAYAZ_OS_TOOLS as unknown as Parameters<typeof resolved.groq.chat.completions.create>[0]['tools'],
+        tool_choice: 'auto',
+        messages,
         max_tokens: 2048,
-        temperature: 0.4,
+        temperature: 0.3,
       })
 
-      const reply = round2.choices[0]?.message?.content ?? "Sorry, I couldn't generate a response."
-      return { reply }
+      const choice = response.choices[0]
+      if (!choice) break
+
+      const assistantMessage = choice.message
+      messages.push(assistantMessage)
+
+      // If the model requested tool calls, execute them and continue the loop
+      if (assistantMessage.tool_calls && assistantMessage.tool_calls.length > 0) {
+        for (const tc of assistantMessage.tool_calls) {
+          let args: Record<string, unknown> = {}
+          try { args = JSON.parse(tc.function.arguments) } catch { /* use empty */ }
+
+          const toolResult = await dispatchTool(tc.function.name, args)
+          messages.push({
+            role: 'tool',
+            tool_call_id: tc.id,
+            content: JSON.stringify(toolResult),
+          })
+        }
+        rounds++
+      } else {
+        // No more tool calls requested - this is the final conversational answer!
+        const reply = assistantMessage.content ?? "Sorry, I couldn't generate a response."
+        return { reply }
+      }
     }
 
-    // ── No tool needed — direct conversational answer ─────────────────────────
-    const reply = choice.message.content ?? "Sorry, I couldn't generate a response."
+    // Fallback if maxRounds was reached (rare)
+    const finalMessage = messages.find(m => m.role === 'assistant' && m.content)
+    const reply = finalMessage?.content ?? "Sorry, I couldn't generate a response."
     return { reply }
 
   } catch (err) {
