@@ -72,17 +72,26 @@ function parseExerciseLine(line: string) {
     nameAndReps = cleaned.replace(/\s*\(?Rest:\s*[^\)]+\)?/i, '').trim()
   }
 
-  // Parse "Exercise Name Sets x Reps" (supporting unicode × as well)
-  // E.g. "Plank 3x30-60s" -> sets: "3", reps: "30-60s"
-  // E.g. "Walking Lunges 3x10 each leg" -> sets: "3", reps: "10", notes: "each leg"
-  const match = nameAndReps.match(/^(.+?)\s+(\d+)\s*[x×]\s*(.+?)(?:\s+(.*))?$/i)
-  if (match) {
+  // 1. Try "Name SetsxReps" format: "Bench Press 4x8", "Plank 3x30-60s"
+  const setsRepsMatch = nameAndReps.match(/^(.+?)\s+(\d+)\s*[x\u00d7]\s*(.+?)(?:\s+(.*))?$/i)
+  if (setsRepsMatch) {
     return {
-      name: match[1].trim(),
-      sets: match[2].trim(),
-      reps: match[3].trim(),
+      name: setsRepsMatch[1].trim(),
+      sets: setsRepsMatch[2].trim(),
+      reps: setsRepsMatch[3].trim(),
       rest,
-      notes: match[4]?.trim() || undefined
+      notes: setsRepsMatch[4]?.trim() || undefined
+    }
+  }
+
+  // 2. Duration-only: "Treadmill Walk 10m", "Cycling 5-15m", "Plank 30-60s", "Run 10m30s"
+  // Supports: 10m | 10m30s | 5-15m | 30-60s | 90s
+  const durationMatch = nameAndReps.match(/^(.+?)\s+(\d+(?:-\d+)?m(?:\d+s)?|\d+(?:-\d+)?s)$/i)
+  if (durationMatch) {
+    return {
+      name: durationMatch[1].trim(),
+      reps: durationMatch[2].trim(), // duration stored in reps (no sets)
+      rest,
     }
   }
 
@@ -229,3 +238,68 @@ export async function updateFitnessProfile(profile: {
   return { success: true }
 }
 
+// ── Import a full workout plan from pasted AI JSON ────────────────────────────
+export async function importWorkoutPlans(
+  jsonString: string
+): Promise<{ success: true; count: number } | { error: string }> {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { error: 'Not authenticated.' }
+
+  let plans: unknown[]
+  try {
+    // Strip markdown code fences if user pasted from ChatGPT
+    const cleaned = jsonString.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim()
+    const parsed = JSON.parse(cleaned)
+    plans = Array.isArray(parsed) ? parsed : [parsed]
+  } catch {
+    return { error: 'Invalid JSON. Copy only the JSON output from the AI (starting with [ and ending with ]).' }
+  }
+
+  const VALID_DAYS = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday']
+  let count = 0
+
+  for (const plan of plans) {
+    if (!plan || typeof plan !== 'object') continue
+    const p = plan as Record<string, unknown>
+
+    const day_of_week = String(p.day_of_week ?? '').trim()
+    const day_type    = String(p.day_type ?? '').trim()
+    if (!VALID_DAYS.includes(day_of_week) || !day_type) continue
+
+    const target_muscle_groups = Array.isArray(p.target_muscle_groups)
+      ? (p.target_muscle_groups as unknown[]).map(String)
+      : typeof p.target_muscle_groups === 'string'
+        ? p.target_muscle_groups.split(',').map((s: string) => s.trim()).filter(Boolean)
+        : []
+
+    const rawExercises = Array.isArray(p.exercises) ? p.exercises as Record<string, unknown>[] : []
+    const exercises: Exercise[] = rawExercises
+      .filter(e => e && typeof e.name === 'string')
+      .map(e => ({
+        name: String(e.name).trim(),
+        sets:  e.sets  ? String(e.sets)  : undefined,
+        reps:  e.reps  ? String(e.reps)  : undefined,
+        rest:  e.rest  ? String(e.rest)  : undefined,
+      }))
+
+    const { error } = await supabase.from('workout_plans').upsert(
+      {
+        user_id: user.id,
+        day_of_week,
+        day_type,
+        warmup: p.warmup ? String(p.warmup) : null,
+        target_muscle_groups,
+        exercises,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: 'user_id,day_of_week' }
+    )
+    if (!error) count++
+  }
+
+  if (count === 0) return { error: 'No valid day plans found. Check that the JSON matches the required schema.' }
+  revalidatePath('/fitness')
+  revalidatePath('/home')
+  return { success: true, count }
+}

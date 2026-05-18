@@ -2,8 +2,8 @@
 
 import { useState, useTransition } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Dumbbell, Plus, Sparkles, CheckCircle2, AlertCircle, Tag, ChevronDown, ChevronUp, Loader2, Trash2, Utensils, Moon } from 'lucide-react'
-import { setDayPlan, clearDayPlan } from '@/actions/fitness'
+import { Dumbbell, Plus, Sparkles, CheckCircle2, AlertCircle, Tag, ChevronDown, ChevronUp, Loader2, Trash2, Utensils, Moon, Upload, Copy, Check } from 'lucide-react'
+import { setDayPlan, clearDayPlan, importWorkoutPlans } from '@/actions/fitness'
 import { aiSetDayPlan, previewWorkoutPlan } from '@/actions/ai'
 import { Combobox } from '@/components/Combobox'
 import { AIInputBox } from '@/components/AIInputBox'
@@ -100,9 +100,13 @@ function DayCard({ day, plan, isToday, onEdit, isLast }: {
                     <li key={i} style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                       <span style={{ width: '22px', height: '22px', borderRadius: '50%', background: 'var(--em-50)', border: '1px solid var(--em-200)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '10px', fontWeight: 800, color: 'var(--em-700)', flexShrink: 0 }}>{i + 1}</span>
                       <span style={{ flex: 1, fontSize: '13px', color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{ex.name}</span>
-                      {ex.sets && ex.reps && (
+                      {(ex.sets || ex.reps) && (
                         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '1px', flexShrink: 0 }}>
-                          <span style={{ fontSize: '11px', fontFamily: 'monospace', color: 'var(--text-muted)', fontWeight: 600 }}>{ex.sets}×{ex.reps}</span>
+                          {ex.sets && ex.reps ? (
+                            <span style={{ fontSize: '11px', fontFamily: 'monospace', color: 'var(--text-muted)', fontWeight: 600 }}>{ex.sets}×{ex.reps}</span>
+                          ) : ex.reps ? (
+                            <span style={{ fontSize: '11px', fontFamily: 'monospace', color: 'var(--text-muted)', fontWeight: 600 }}>{ex.reps}</span>
+                          ) : null}
                           {ex.rest && (
                             <span style={{ fontSize: '9px', color: '#f59e0b', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '1px' }}>⏱️ {ex.rest}</span>
                           )}
@@ -134,7 +138,7 @@ function DayPlanForm({ day, existing, onClose }: {
     startTransition(async () => {
       const result = await setDayPlan({}, formData)
       setState(result)
-      if (result.success) setTimeout(onClose, 800)
+      if (result.success) onClose()  // close immediately, data is saved
     })
   }
 
@@ -234,6 +238,140 @@ function DayPlanForm({ day, existing, onClose }: {
   )
 }
 
+const IMPORT_PROMPT = `Convert the workout plan I provide into this exact JSON format. Output ONLY the raw JSON array — no explanations, no markdown fences, no "Here is your JSON", no closing remarks. Start your response with [ and end with ].
+
+JSON Schema:
+[
+  {
+    "day_of_week": "Monday",
+    "day_type": "Push",
+    "warmup": "5 min light cycling (optional, omit if not mentioned)",
+    "target_muscle_groups": ["Chest", "Triceps"],
+    "exercises": [
+      { "name": "Bench Press", "sets": "4", "reps": "8", "rest": "90s" },
+      { "name": "Incline Treadmill Walk", "reps": "10m", "rest": null },
+      { "name": "Plank", "sets": "3", "reps": "30-60s", "rest": "30s" }
+    ]
+  }
+]
+
+Rules:
+- Use null for rest if not specified
+- Duration exercises (cardio, holds) use reps field for time: "10m", "10m30s", "5-15m", "30-60s"
+- Set/rep exercises use sets + reps: "3" + "12" or "3" + "10-15"
+- One object per training day
+- day_of_week must be exactly: Monday, Tuesday, Wednesday, Thursday, Friday, Saturday, or Sunday
+
+My workout plan:
+[PASTE YOUR PLAN BELOW THIS LINE]`
+
+function ImportPlanSection() {
+  const [open, setOpen] = useState(false)
+  const [json, setJson] = useState('')
+  const [isPending, startTransition] = useTransition()
+  const [result, setResult] = useState<{ success?: boolean; count?: number; error?: string }>({})
+  const [copied, setCopied] = useState(false)
+
+  function copyPrompt() {
+    navigator.clipboard.writeText(IMPORT_PROMPT)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+  }
+
+  function handleImport() {
+    if (!json.trim()) return
+    setResult({})
+    startTransition(async () => {
+      const res = await importWorkoutPlans(json)
+      setResult(res)
+      if ('success' in res) {
+        setJson('')
+        setTimeout(() => { setOpen(false); setResult({}) }, 1500)
+      }
+    })
+  }
+
+  return (
+    <div style={{ background: '#ffffff', borderRadius: '20px', boxShadow: '0 4px 24px rgba(0,0,0,0.08), 0 0 0 1px rgba(0,0,0,0.05)', overflow: 'hidden' }}>
+      <button
+        onClick={() => setOpen(o => !o)}
+        style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 18px', background: 'transparent', border: 'none', cursor: 'pointer' }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <div style={{ width: '28px', height: '28px', borderRadius: '8px', background: '#f0fdf4', border: '1px solid #bbf7d0', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <Upload size={13} color="var(--em-600)" />
+          </div>
+          <div style={{ textAlign: 'left' }}>
+            <p style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-primary)' }}>Import Plan from AI</p>
+            <p style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Paste a ChatGPT-formatted plan</p>
+          </div>
+        </div>
+        {open ? <ChevronUp size={14} color="var(--text-muted)" /> : <ChevronDown size={14} color="var(--text-muted)" />}
+      </button>
+
+      <AnimatePresence>
+        {open && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.2 }} style={{ overflow: 'hidden' }}
+          >
+            <div style={{ padding: '0 18px 18px', borderTop: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+
+              {/* Step 1 */}
+              <div style={{ marginTop: '14px' }}>
+                <p style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--em-600)', marginBottom: '6px' }}>Step 1 — Copy this prompt into ChatGPT / any AI</p>
+                <div style={{ background: '#f8fafc', border: '1px solid var(--border)', borderRadius: '12px', padding: '10px 12px', position: 'relative' }}>
+                  <pre style={{ fontSize: '11px', color: 'var(--text-secondary)', lineHeight: 1.5, whiteSpace: 'pre-wrap', wordBreak: 'break-word', margin: 0, maxHeight: '120px', overflowY: 'auto', fontFamily: 'monospace' }}>{IMPORT_PROMPT.slice(0, 300)}…</pre>
+                  <button
+                    onClick={copyPrompt}
+                    style={{ position: 'absolute', top: '8px', right: '8px', display: 'flex', alignItems: 'center', gap: '4px', padding: '4px 10px', borderRadius: '8px', background: copied ? 'var(--em-500)' : '#e2e8f0', border: 'none', cursor: 'pointer', fontSize: '11px', fontWeight: 600, color: copied ? '#fff' : 'var(--text-secondary)', transition: 'all 0.2s' }}
+                  >
+                    {copied ? <Check size={11} /> : <Copy size={11} />}
+                    {copied ? 'Copied!' : 'Copy'}
+                  </button>
+                </div>
+                <p style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '4px' }}>Paste your workout plan at the bottom of the prompt, then run it. The AI will reply with pure JSON only.</p>
+              </div>
+
+              {/* Step 2 */}
+              <div>
+                <p style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--em-600)', marginBottom: '6px' }}>Step 2 — Paste the AI&apos;s JSON response here</p>
+                <textarea
+                  value={json}
+                  onChange={e => setJson(e.target.value)}
+                  rows={6}
+                  placeholder={'[\n  {\n    "day_of_week": "Monday",\n    ...\n  }\n]'}
+                  style={{ width: '100%', borderRadius: '12px', border: '1.5px solid var(--border)', padding: '10px 12px', fontFamily: 'monospace', fontSize: '11px', resize: 'vertical', outline: 'none', color: 'var(--text-primary)', boxSizing: 'border-box' }}
+                />
+              </div>
+
+              {result.error && (
+                <div style={{ display: 'flex', gap: '8px', alignItems: 'center', fontSize: '12px', color: '#dc2626', background: '#fef2f2', borderRadius: '10px', padding: '10px 12px' }}>
+                  <AlertCircle size={13} /> {result.error}
+                </div>
+              )}
+              {'success' in result && result.success && (
+                <div style={{ display: 'flex', gap: '8px', alignItems: 'center', fontSize: '12px', color: 'var(--em-700)', background: 'var(--em-50)', borderRadius: '10px', padding: '10px 12px' }}>
+                  <CheckCircle2 size={13} /> {result.count} day{result.count !== 1 ? 's' : ''} imported successfully!
+                </div>
+              )}
+
+              <button
+                onClick={handleImport}
+                disabled={isPending || !json.trim()}
+                style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', padding: '11px', borderRadius: '12px', background: !json.trim() ? 'var(--border)' : 'var(--em-500)', color: '#fff', border: 'none', fontWeight: 700, fontSize: '13px', cursor: json.trim() ? 'pointer' : 'default', transition: 'background 0.2s' }}
+              >
+                {isPending ? <Loader2 size={13} className="animate-spin" /> : <Upload size={13} />}
+                {isPending ? 'Importing...' : 'Import Plan'}
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  )
+}
+
 export function FitnessClient({ weeklyPlan, todayPlan, aiAction, initialMeals, initialSleep }: {
   weeklyPlan: DayPlan[]
   todayPlan: DayPlan | null
@@ -308,6 +446,7 @@ export function FitnessClient({ weeklyPlan, todayPlan, aiAction, initialMeals, i
                 label="AI Quick Set"
                 placeholder={`e.g. "Friday is a light home day — pushups and plank" or "Saturday is Push — bench press 4x8, incline dumbbell 3x10"`}
               />
+              <ImportPlanSection />
               <AnimatePresence>
                 {editingDay && (
                   <DayPlanForm
