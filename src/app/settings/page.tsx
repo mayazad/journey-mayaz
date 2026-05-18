@@ -6,6 +6,7 @@ import { ClearBriefingCacheButton } from './ClearBriefingCacheButton'
 import { AvatarUpload } from './AvatarUpload'
 import { GroqKeyInput } from './GroqKeyInput'
 import { ProfileNameInput } from './ProfileNameInput'
+import { WhatsAppConfigSection } from './WhatsAppConfigSection'
 import { DeleteAccountSection } from './DeleteAccountSection'
 import { FitnessProfileSection } from './FitnessProfileSection'
 import { getFitnessProfile } from '@/actions/fitness'
@@ -50,12 +51,14 @@ export default async function SettingsPage() {
 
   // Fetch avatar, admin flag, and groq key from profiles table
   const { data: profile } = user
-    ? await supabase.from('profiles').select('avatar_url, is_admin, groq_api_key').eq('id', user.id).single()
+    ? await supabase.from('profiles').select('avatar_url, is_admin, groq_api_key, callmebot_phone, callmebot_api_key').eq('id', user.id).single()
     : { data: null }
   const avatarUrl = profile?.avatar_url ||
     (user?.user_metadata?.avatar_url as string | undefined) || null
   const isAdmin   = profile?.is_admin ?? false
   const groqApiKey = (profile as { groq_api_key?: string | null } | null)?.groq_api_key ?? null
+  const callmebotPhone = (profile as any)?.callmebot_phone ?? null
+  const callmebotKey = (profile as any)?.callmebot_api_key ?? null
 
   const initials = rawName.trim().slice(0, 2).toUpperCase()
 
@@ -92,7 +95,8 @@ export default async function SettingsPage() {
             )}
             <ProfileNameInput initialName={rawName} />
             <Row label="Email" value={user?.email || '—'} />
-            <Row label="User ID" value={user?.id ? `${user.id.slice(0, 8)}…` : '—'} last />
+            <Row label="User ID" value={user?.id ? `${user.id.slice(0, 8)}…` : '—'} />
+            <WhatsAppConfigSection currentPhone={callmebotPhone} currentKey={callmebotKey} />
           </Section>
 
           {/* Fitness Profile */}

@@ -9,18 +9,17 @@ export async function GET(request: Request) {
   }
 
   try {
-    // We must use the service role key to bypass RLS since there is no active user session during a cron job.
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
     const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!
     const supabase = createClient(supabaseUrl, supabaseServiceKey)
 
-    // Fetch pending tasks due within the next 48 hours
+    // 1. Fetch pending tasks due within the next 48 hours
     const now = new Date()
     const in48Hours = new Date(now.getTime() + 48 * 60 * 60 * 1000)
 
     const { data: tasks, error } = await supabase
       .from('academic_tasks')
-      .select('*')
+      .select('*, profiles(callmebot_phone, callmebot_api_key)')
       .eq('status', 'pending')
       .lte('due_date', in48Hours.toISOString())
       .gte('due_date', now.toISOString())
@@ -35,37 +34,57 @@ export async function GET(request: Request) {
       return NextResponse.json({ message: 'No urgent tasks found. No reminders sent.' })
     }
 
-    // Prepare WhatsApp message
-    let message = '🚨 *Academic Reminder*\n\nYou have tasks due soon:\n\n'
-    tasks.forEach((task, idx) => {
-      const dueDate = new Date(task.due_date).toLocaleString('en-US', {
-        weekday: 'short',
-        month: 'short',
-        day: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit',
-      })
-      message += `${idx + 1}. *${task.title}* (${task.type})\nDue: ${dueDate}\n\n`
-    })
-    
-    message += 'Mark them as done in your dashboard to stop these reminders!'
+    // 2. Group tasks by user_id
+    const tasksByUser: Record<string, {
+      phone: string;
+      apiKey: string;
+      tasks: typeof tasks;
+    }> = {}
 
-    // Send via CallMeBot API if credentials exist
-    const phone = process.env.CALLMEBOT_PHONE
-    const apiKey = process.env.CALLMEBOT_API_KEY
+    tasks.forEach(task => {
+      const profile = Array.isArray(task.profiles) ? task.profiles[0] : task.profiles;
+      const phone = profile?.callmebot_phone
+      const apiKey = profile?.callmebot_api_key
+      
+      // If the user hasn't configured WhatsApp, we skip sending them a reminder
+      if (!phone || !apiKey) return
 
-    if (phone && apiKey) {
-      const url = `https://api.callmebot.com/whatsapp.php?phone=${phone}&text=${encodeURIComponent(message)}&apikey=${apiKey}`
-      const res = await fetch(url)
-      if (!res.ok) {
-        console.error('CallMeBot API failed:', await res.text())
-        return NextResponse.json({ error: 'Failed to send WhatsApp message' }, { status: 500 })
+      if (!tasksByUser[task.user_id]) {
+        tasksByUser[task.user_id] = { phone, apiKey, tasks: [] }
       }
-      return NextResponse.json({ message: 'Reminder sent successfully!', tasks: tasks.length })
-    } else {
-      console.warn('CallMeBot credentials missing in environment variables.')
-      return NextResponse.json({ message: 'Tasks found, but no CallMeBot credentials configured.', tasks: tasks.length })
+      tasksByUser[task.user_id].tasks.push(task)
+    })
+
+    let totalSent = 0
+
+    // 3. Send WhatsApp messages for each user who has it configured
+    for (const userId of Object.keys(tasksByUser)) {
+      const userGroup = tasksByUser[userId]
+      let message = '🚨 *Academic Reminder*\n\nYou have tasks due soon:\n\n'
+      
+      userGroup.tasks.forEach((task, idx) => {
+        const dueDate = new Date(task.due_date).toLocaleString('en-US', {
+          weekday: 'short', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
+        })
+        message += `${idx + 1}. *${task.title}* (${task.type})\nDue: ${dueDate}\n\n`
+      })
+      
+      message += 'Mark them as done in your dashboard to stop these reminders!'
+
+      const url = `https://api.callmebot.com/whatsapp.php?phone=${userGroup.phone}&text=${encodeURIComponent(message)}&apikey=${userGroup.apiKey}`
+      const res = await fetch(url)
+      
+      if (!res.ok) {
+        console.error(`CallMeBot API failed for user ${userId}:`, await res.text())
+      } else {
+        totalSent++
+      }
     }
+
+    return NextResponse.json({ 
+      message: `Reminders processed. Sent ${totalSent} individual WhatsApp messages.`, 
+      total_urgent_tasks: tasks.length 
+    })
 
   } catch (err: any) {
     console.error('Cron job error:', err)
