@@ -14,7 +14,7 @@ type Task = {
 
 import { useState, useTransition } from 'react'
 import { AnimatePresence } from 'framer-motion'
-import { deleteTask } from '@/actions/academics'
+import { deleteTask, updateTaskStatus } from '@/actions/academics'
 
 const TYPE_CONFIG: Record<string, { icon: React.ElementType; label: string }> = {
   assignment:   { icon: BookOpen,       label: 'Assignment' },
@@ -292,6 +292,21 @@ function TaskSheet({
                 </p>
               </div>
             )}
+
+            <button
+              onClick={async () => {
+                await updateTaskStatus(task.id, 'completed')
+                onClose() // revalidatePath triggers refresh
+              }}
+              style={{
+                width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
+                padding: '16px', borderRadius: '16px', border: 'none', cursor: 'pointer',
+                background: '#10b981', color: '#fff',
+                fontSize: '15px', fontWeight: 700, marginTop: '20px'
+              }}
+            >
+              <CheckCircle2 size={18} /> Mark as Done
+            </button>
           </div>
         </div>
       </motion.div>

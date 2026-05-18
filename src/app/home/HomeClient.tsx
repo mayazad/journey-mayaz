@@ -5,11 +5,12 @@ import ReactMarkdown from 'react-markdown'
 import Link from 'next/link'
 import {
   Dumbbell, GraduationCap, Sparkles, ChevronRight,
-  X, Clock, AlertTriangle, BookOpen, Monitor, Swords, FileText, FolderKanban, MoreHorizontal,
+  X, Clock, AlertTriangle, BookOpen, Monitor, Swords, FileText, FolderKanban, MoreHorizontal, CheckCircle,
 } from 'lucide-react'
 import { useEffect, useState, useTransition } from 'react'
 import { HomeChatPanel } from '@/components/HomeChatPanel'
 import { generateDailyBriefing } from '@/actions/ai'
+import { updateTaskStatus } from '@/actions/academics'
 
 type DayPlan = {
   id: string; day_of_week: string; day_type: string
@@ -161,6 +162,11 @@ export function HomeClient({
                   @keyframes pulse {
                     0%, 100% { opacity: 0.35; }
                     50% { opacity: 0.85; }
+                  }
+                  @keyframes glowUrgent {
+                    0% { box-shadow: 0 0 0 0 rgba(139, 92, 246, 0.4); border-color: var(--em-400); }
+                    50% { box-shadow: 0 0 12px 2px rgba(139, 92, 246, 0.6); border-color: var(--em-600); }
+                    100% { box-shadow: 0 0 0 0 rgba(139, 92, 246, 0.4); border-color: var(--em-400); }
                   }
                 ` }} />
                 <div style={{ width: '35%', height: '16px', borderRadius: '6px', background: 'var(--border-2)' }} />
@@ -337,6 +343,7 @@ export function HomeClient({
                       background: '#ffffff', borderRadius: '16px', padding: '14px 16px',
                       border: isUrgent ? '1px solid var(--em-700)' : '1px solid var(--border)',
                       boxShadow: '0 2px 12px rgba(0,0,0,0.04)',
+                      animation: isUrgent ? 'glowUrgent 2s infinite ease-in-out' : 'none',
                       display: 'flex', alignItems: 'center', gap: '12px',
                     }}>
                       <div style={{
@@ -567,17 +574,34 @@ function HomeTaskSheet({ task, onClose }: { task: Task; onClose: () => void }) {
               </span>
             </div>
           </div>
-          <Link
-            href="/academics"
-            style={{
-              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
-              marginTop: '12px', padding: '14px', borderRadius: '16px',
-              background: 'var(--em-500)', color: '#fff',
-              fontSize: '14px', fontWeight: 700, textDecoration: 'none',
-            }}
-          >
-            <GraduationCap size={16} /> View All Tasks
-          </Link>
+          <div style={{ display: 'flex', gap: '10px', marginTop: '12px' }}>
+            <button
+              onClick={async () => {
+                await updateTaskStatus(task.id, 'completed')
+                onClose() // Note: the parent list needs to be re-fetched. Luckily updateTaskStatus calls revalidatePath!
+              }}
+              style={{
+                flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
+                padding: '14px', borderRadius: '16px', border: 'none', cursor: 'pointer',
+                background: '#10b981', color: '#fff',
+                fontSize: '14px', fontWeight: 700,
+              }}
+            >
+              <CheckCircle size={16} /> Mark as Done
+            </button>
+            <Link
+              href="/academics"
+              onClick={onClose}
+              style={{
+                flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
+                padding: '14px', borderRadius: '16px',
+                background: 'var(--bg-surface2)', color: 'var(--text-primary)',
+                fontSize: '14px', fontWeight: 700, textDecoration: 'none',
+              }}
+            >
+              <GraduationCap size={16} /> View All
+            </Link>
+          </div>
         </div>
       </motion.div>
     </>
